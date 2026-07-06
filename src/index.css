@@ -349,7 +349,7 @@ h1, h2, h3, h4, h5, h6 {
   line-height: 1.2;
 }
 
-/* App-level display heading (e.g., "AVN") */
+/* App-level display heading (e.g., "ABN") */
 .heading-display {
   font-size: 2rem;
   font-weight: 800;

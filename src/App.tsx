@@ -10,6 +10,8 @@ import { SavedTab } from './components/SavedTab';
 import { BusinessPortalTab } from './components/BusinessPortalTab';
 import { AccountTab } from './components/AccountTab';
 import { AdminPanelTab } from './components/AdminPanelTab';
+import { JobManagementScreen } from './components/JobManagementScreen';
+import { JobBoardScreen } from './components/JobBoardScreen';
 import { Business } from './types';
 import {
   Home,
@@ -81,6 +83,7 @@ function TabContent({
   isBusinessPortal?: boolean;
   hasBusinessListing?: boolean;
 }) {
+  const { currentUser } = useDirectory();
   return (
     <>
       {!isBusinessPortal && activeTab === 'home' && (
@@ -139,6 +142,21 @@ function TabContent({
           />
         </TabView>
       )}
+
+      {/* Job Management — Business Person ($50) ONLY; service providers silently redirected */}
+      {activeTab === 'job-management' && currentUser?.role === 'business' && (
+        <TabView tabKey="job-management">
+          <JobManagementScreen onBack={() => setActiveTab('account')} />
+        </TabView>
+      )}
+
+      {/* Job Board — global public job listings, accessed from HomeTab "See All Jobs" */}
+      {activeTab === 'job-board' && (
+        <TabView tabKey="job-board">
+          <JobBoardScreen onBack={() => setActiveTab('home')} />
+        </TabView>
+      )}
+
       {activeTab === 'admin' && (
         <TabView tabKey="admin">
           <div className="space-y-5">
@@ -179,8 +197,8 @@ function BottomNav({
   isBusiness?: boolean;
   hasBusinessListing?: boolean;
 }) {
-  // Account is active on its own tab AND on any portal sub-page
-  const isAccountActive = activeTab === 'account' || activeTab === 'portal-management';
+  // Account is active on its own tab AND on any portal / job sub-pages
+  const isAccountActive = activeTab === 'account' || activeTab === 'portal-management' || activeTab === 'job-management';
   // Home is active on the consumer home OR the business directory tab
   const isHomeActive = activeTab === 'home' || activeTab === 'business';
 
@@ -255,7 +273,7 @@ function BottomNav({
 }
 
 function DirectoryAppContent() {
-  const { language, setLanguage, currentUser, businesses, signIn, signOut } = useDirectory();
+  const { language, setLanguage, currentUser, businesses, signIn, apiLogin, signOut } = useDirectory();
   const t = TRANSLATIONS[language];
   const liveTime = useLiveClock();
   const isMobile = useIsMobile();
@@ -267,8 +285,11 @@ function DirectoryAppContent() {
 
   const isBusiness = currentUser?.role === 'business' || currentUser?.role === 'service_provider';
   const isAdmin = currentUser?.role === 'admin';
+  // Check by both id (mock data) and email (Supabase API data) so both auth paths work
   const hasBusinessListing = Boolean(
-    currentUser && businesses.some((b) => b.ownerId === currentUser.id)
+    currentUser && businesses.some((b) =>
+      b.ownerId === currentUser.id || b.ownerId === currentUser.email
+    )
   );
   const isBusinessPortal = isBusiness && hasBusinessListing;
 
@@ -288,15 +309,26 @@ function DirectoryAppContent() {
     }
   }, [isBusiness, hasBusinessListing, activeTab]);
 
-  const handleSandboxLogin = (profile: 'cust' | 'owner' | 'service' | 'admin') => {
-    if (profile === 'cust') {
-      signIn('manimuhammad000@gmail.com', '+1 770 111 2222', 'customer', 'Mani Muhammad');
-    } else if (profile === 'owner') {
-      signIn('business@shiadirectory.com', '+1 770 123 4567', 'business', 'Hassan Al-Kawthar');
-    } else if (profile === 'service') {
-      signIn('service@shiadirectory.com', '+1 780 987 6543', 'service_provider', 'Noor Electricians (Demo)');
-    } else {
-      signIn('admin@shiadirectory.com', '+1 780 000 0000', 'admin', 'Abu Murtadha (Admin)');
+  // job-management is exclusively for 'business' role — redirect service providers away
+  useEffect(() => {
+    if (activeTab === 'job-management' && currentUser?.role !== 'business') {
+      setActiveTab('account');
+    }
+  }, [activeTab, currentUser?.role]);
+
+  // Sandbox login: try the live API first, fall back to mock if backend is offline
+  const handleSandboxLogin = async (profile: 'cust' | 'owner' | 'service' | 'admin') => {
+    const CREDS = {
+      cust:    { email: 'manimuhammad000@gmail.com',  password: 'password123', phone: '+1 770 111 2222', role: 'customer'         as const, name: 'Mani Muhammad' },
+      owner:   { email: 'business@shiadirectory.com', password: 'password123', phone: '+1 770 123 4567', role: 'business'         as const, name: 'Hassan Al-Kawthar' },
+      service: { email: 'service@shiadirectory.com',  password: 'password123', phone: '+1 780 987 6543', role: 'service_provider' as const, name: 'Noor Electricians (Demo)' },
+      admin:   { email: 'admin@shiadirectory.com',    password: 'admin123',    phone: '+1 780 000 0000', role: 'admin'            as const, name: 'Abu Murtadha (Admin)' },
+    };
+    const c = CREDS[profile];
+    const result = await apiLogin(c.email, c.password);
+    if (!result.success) {
+      // Backend not running — use in-memory mock auth as fallback
+      signIn(c.email, c.phone, c.role, c.name);
     }
   };
 
@@ -453,7 +485,7 @@ function DirectoryAppContent() {
               Shia Business Directory Mobile Environment
             </h2>
             <p className="text-xs text-gray-400 leading-relaxed">
-              Assalamu Alaykum! Welcome to the Shia Community Directory sandbox. Experience the full mobile app and verify administrative rules on the fly.
+              Assalamu Alaykum! Welcome to the Ahle Bait Network (ABN) sandbox. Experience the full mobile app and verify administrative rules on the fly.
             </p>
           </div>
 
@@ -469,7 +501,7 @@ function DirectoryAppContent() {
               ].map(({ profile, icon, name, sub, tab, role }) => (
                 <button
                   key={profile}
-                  onClick={() => { handleSandboxLogin(profile); setActiveTab(tab); }}
+                  onClick={() => { handleSandboxLogin(profile).then(() => setActiveTab(tab)); }}
                   className={`p-3 rounded-2xl border text-left flex flex-col justify-between h-24 hover:scale-[1.02] transition-all card-hover ${
                     currentUser?.role === role ? 'bg-[#FFA048]/10 border-[#FFA048]' : 'bg-[#191613] border-[#2D2319] hover:bg-[#201B15]'
                   }`}
@@ -520,7 +552,7 @@ function DirectoryAppContent() {
       <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
 
       <footer className="border-t border-[#2D2319] bg-[#0F0E0C] py-6 text-center text-xs text-gray-500">
-        <p>© 2026 Shia Community Business Directory. All rights reserved.</p>
+        <p>© 2026 Ahle Bait Network (ABN). All rights reserved.</p>
       </footer>
     </div>
   );

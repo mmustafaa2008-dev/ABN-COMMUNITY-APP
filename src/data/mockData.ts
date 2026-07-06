@@ -1,4 +1,4 @@
-import { Category, Business, Review, PaymentRecord, Product, Order } from '../types';
+import { Category, Business, Review, PaymentRecord, Product, Order, Job } from '../types';
 
 export const INITIAL_CATEGORIES: Category[] = [
   { id: 'cat-clothing', name: { en: 'Clothing', ar: 'الملابس' }, group: 'Shops', iconName: 'Shirt' },
@@ -510,3 +510,67 @@ export const INITIAL_ORDERS: Order[] = [
     date: '2026-06-25'
   }
 ];
+
+export const INITIAL_JOBS: Job[] = [
+  {
+    id: 'job-001',
+    businessId: 'biz-alkawthar',
+    businessName: 'Al-Kawthar Grocery',
+    businessLogoUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=200&h=200',
+    title: 'Deli Chef',
+    category: 'Chef',
+    requirements: 'Experienced in Middle Eastern cuisine. Ability to work in a fast-paced environment. Food safety certification preferred. Minimum 2 years kitchen experience.',
+    salaryMin: 2000,
+    salaryMax: 3200,
+    hiringEmail: 'jobs@alkawtharmarket.com',
+    postedDate: '2026-07-01',
+    isActive: true,
+  },
+  {
+    id: 'job-002',
+    businessId: 'biz-alkawthar',
+    businessName: 'Al-Kawthar Grocery',
+    businessLogoUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=200&h=200',
+    title: 'Store Inventory Manager',
+    category: 'Others',
+    requirements: 'Minimum 2 years retail management experience. Strong organizational skills. Bilingual (English / Arabic) a strong plus. Must be familiar with POS systems.',
+    salaryMin: 2500,
+    salaryMax: 3500,
+    hiringEmail: 'jobs@alkawtharmarket.com',
+    postedDate: '2026-07-02',
+    isActive: true,
+  },
+  {
+    id: 'job-003',
+    businessId: 'biz-noor',
+    businessName: 'Noor Electricians',
+    businessLogoUrl: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&q=80&w=200&h=200',
+    title: 'Senior Electrician',
+    category: 'IT',
+    requirements: 'Licensed certified electrician. 5+ years of commercial and residential wiring experience. Must have valid driving license. Physically fit for on-site work.',
+    salaryMin: 3000,
+    salaryMax: 5000,
+    hiringEmail: 'service@shiadirectory.com',
+    postedDate: '2026-07-04',
+    isActive: true,
+  },
+  {
+    id: 'job-004',
+    businessId: 'biz-noor',
+    businessName: 'Noor Electricians',
+    businessLogoUrl: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&q=80&w=200&h=200',
+    title: 'Office Admin & Designer',
+    category: 'Graphic Designing',
+    requirements: 'Proficient in Adobe Suite (Illustrator, Photoshop). Experience creating social media content and print collateral. Strong organizational abilities.',
+    salaryMin: 1800,
+    salaryMax: 2800,
+    hiringEmail: 'service@shiadirectory.com',
+    postedDate: '2026-07-05',
+    isActive: true,
+  },
+];
+
+export const INITIAL_HIRING_ACTIVE: Record<string, boolean> = {
+  'biz-alkawthar': true,
+  'biz-noor': true,
+};

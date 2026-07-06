@@ -92,7 +92,7 @@ export const TRANSLATIONS = {
     reports: 'Reports',
     payments: 'Payments',
     contactBusiness: 'Contact Business',
-    whatsappMessage: 'Hello, I found your business on the Shia Community Business Directory. I would like to inquire about your services.',
+    whatsappMessage: 'Hello, I found your business on the Ahle Bait Network (ABN) Business Directory. I would like to inquire about your services.',
     callNow: 'Call Now',
     openWhatsapp: 'Open WhatsApp',
     visitLocation: 'Visit Location',

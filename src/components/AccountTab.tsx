@@ -31,7 +31,9 @@ export const AccountTab: React.FC<AccountTabProps> = ({ onOpenAuth, onSwitchTab 
     businesses,
     notifications,
     markNotificationsAsRead,
-    clearNotifications
+    clearNotifications,
+    hiringActive,
+    setHiringActive,
   } = useDirectory();
   const t = TRANSLATIONS[language];
 
@@ -51,7 +53,9 @@ export const AccountTab: React.FC<AccountTabProps> = ({ onOpenAuth, onSwitchTab 
   };
 
   const isBusinessUser = currentUser?.role === 'business' || currentUser?.role === 'service_provider';
-  const myBusiness = isBusinessUser ? businesses.find(b => b.ownerId === currentUser?.id) : null;
+  const myBusiness = isBusinessUser
+    ? businesses.find(b => b.ownerId === currentUser?.id || b.ownerId === currentUser?.email)
+    : null;
 
   const roleBadgeLabel = () => {
     if (!currentUser) return '';
@@ -193,6 +197,53 @@ export const AccountTab: React.FC<AccountTabProps> = ({ onOpenAuth, onSwitchTab 
               <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-[#FFA048]" />
             </button>
           )}
+
+          {/* ── Hiring Toggle — Business Person ($50) ONLY, not service providers ── */}
+          {myBusiness && currentUser?.role === 'business' && (
+            <div className="rounded-2xl bg-[#13110E] border border-[#2D2319] overflow-hidden">
+              <div className="flex items-center justify-between p-4">
+                <div className="flex items-center gap-3">
+                  <span className="text-base" aria-hidden="true">💼</span>
+                  <div>
+                    <span className="text-xs text-gray-200 font-semibold block">
+                      {language === 'en' ? 'Hiring Active (Post Jobs)' : 'التوظيف نشط (نشر وظائف)'}
+                    </span>
+                    <span className="text-[9px] text-gray-500">
+                      {language === 'en' ? 'Show job openings on the directory feed' : 'عرض الوظائف على الصفحة الرئيسية'}
+                    </span>
+                  </div>
+                </div>
+                {/* Toggle switch */}
+                <button
+                  onClick={() => setHiringActive(myBusiness.id, !(hiringActive[myBusiness.id] ?? false))}
+                  className={`relative w-11 h-6 rounded-full transition-all duration-300 flex-shrink-0 ${
+                    hiringActive[myBusiness.id] ? 'bg-[#FFA048]' : 'bg-[#2D2319]'
+                  }`}
+                  aria-label="Toggle hiring"
+                  id="toggle-hiring-active"
+                >
+                  <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all duration-300 ${
+                    hiringActive[myBusiness.id] ? 'left-6' : 'left-1'
+                  }`} />
+                </button>
+              </div>
+
+              {/* "Post a New Job" action tile — visible only when hiring is ON */}
+              {hiringActive[myBusiness.id] && (
+                <button
+                  onClick={() => onSwitchTab('job-management')}
+                  className="w-full flex items-center justify-between px-4 py-3.5 bg-[#FFA048]/8 border-t border-[#2D2319] hover:bg-[#FFA048]/15 transition-all group"
+                  id="btn-post-new-job"
+                >
+                  <span className="flex items-center gap-3 text-xs text-[#FFA048] font-bold">
+                    <span className="text-base" aria-hidden="true">➕</span>
+                    {language === 'en' ? 'Post a New Job / Manage Openings' : 'نشر وظيفة / إدارة الوظائف'}
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-[#FFA048] group-hover:translate-x-0.5 transition-transform" />
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -203,7 +254,7 @@ export const AccountTab: React.FC<AccountTabProps> = ({ onOpenAuth, onSwitchTab 
           <button
             onClick={() => {
               // Registered users go to management dashboard; unregistered go to registration flow
-              const hasListing = businesses.some(b => b.ownerId === currentUser.id);
+              const hasListing = businesses.some(b => b.ownerId === currentUser.id || b.ownerId === currentUser.email);
               onSwitchTab(hasListing || currentUser.role === 'admin' ? 'portal-management' : 'business');
             }}
             className="p-4 rounded-3xl bg-[#13110E] border border-[#2D2319] hover:border-[#FFA048]/40 transition-all flex flex-col text-left space-y-4 shadow-sm group"
@@ -463,7 +514,7 @@ export const AccountTab: React.FC<AccountTabProps> = ({ onOpenAuth, onSwitchTab 
 
             <div className="text-xs text-gray-400 leading-relaxed font-sans space-y-3.5 max-h-[300px] overflow-y-auto pr-1">
               <p>
-                <strong>Community Directory Model:</strong> The Shia Community Business Directory application strictly operates as an index to discover verified local Shia-owned shops and professionals.
+                <strong>Community Directory Model:</strong> The Ahle Bait Network (ABN) Business Directory application strictly operates as an index to discover verified local Shia-owned shops and professionals.
               </p>
               <p>
                 <strong>No Intermediary Transactions:</strong> To guarantee absolute security, the system does not processes credit cards for services or collect direct user transaction streams. All communication happens outside the platform (direct calling or WhatsApp deep-linking).

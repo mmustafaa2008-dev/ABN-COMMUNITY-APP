@@ -53,7 +53,9 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
   const [activePortalTab, setActivePortalTab] = useState<'dash' | 'edit' | 'pay'>('dash');
 
   // Find business registered to current owner
-  const myBusiness = businesses.find((b) => b.ownerId === (currentUser?.id || ''));
+  const myBusiness = businesses.find((b) =>
+    b.ownerId === (currentUser?.id || '') || b.ownerId === (currentUser?.email || '')
+  );
 
   // Registration Flow State
   const [registrationType, setRegistrationType] = useState<'business' | 'service' | null>(null);
@@ -62,9 +64,7 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
   const [regName, setRegName] = useState('');
   const [regCatId, setRegCatId] = useState(categories[0]?.id || '');
   const [regSubcat, setRegSubcat] = useState('');
-  const [regSubcatAr, setRegSubcatAr] = useState('');
   const [regDesc, setRegDesc] = useState('');
-  const [regDescAr, setRegDescAr] = useState('');
   const [regAddress, setRegAddress] = useState('');
   const [regArea, setRegArea] = useState('');
   const [regCity, setRegCity] = useState<'Baghdad' | 'Najaf' | 'Karbala' | 'Basra' | 'Erbil'>('Baghdad');
@@ -72,7 +72,6 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
   const [regWhatsapp, setRegWhatsapp] = useState('');
   const [regWeb, setRegWeb] = useState('');
   const [regHours, setRegHours] = useState('8:00 AM - 10:00 PM');
-  const [regHoursAr, setRegHoursAr] = useState('8:00 صباحاً - 10:00 مساءً');
   const [regLogo, setRegLogo] = useState('');
   const [regCover, setRegCover] = useState('');
   const [regImagePreview, setRegImagePreview] = useState('');
@@ -216,9 +215,9 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
       name: regName,
       logoUrl: defaultLogo,
       coverUrl: defaultCover,
-      description: { en: regDesc, ar: regDescAr || regDesc },
+      description: { en: regDesc, ar: regDesc },
       categoryId: regCatId,
-      subcategory: { en: regSubcat, ar: regSubcatAr || regSubcat },
+      subcategory: { en: regSubcat, ar: regSubcat },
       address: regAddress,
       city: regCity,
       area: regArea || 'Baghdad',
@@ -227,7 +226,7 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
       phone: regPhone,
       whatsapp: regWhatsapp,
       website: regWeb,
-      workingHours: { en: regHours, ar: regHoursAr || regHours },
+      workingHours: { en: regHours, ar: regHours },
       membershipExpiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       gallery: [defaultCover],
       rating: 5.0,
@@ -619,53 +618,28 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">{t.subcategories}* (English)</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Grocery Store"
-                  value={regSubcat}
-                  onChange={(e) => setRegSubcat(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white placeholder-gray-600 outline-none"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">{t.subcategories} (العربية)*</label>
-                <input
-                  type="text"
-                  placeholder="مثال: متجر بقالة"
-                  value={regSubcatAr}
-                  onChange={(e) => setRegSubcatAr(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white placeholder-gray-600 outline-none"
-                  required
-                />
-              </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">{t.subcategories}*</label>
+              <input
+                type="text"
+                placeholder="e.g. Grocery Store"
+                value={regSubcat}
+                onChange={(e) => setRegSubcat(e.target.value)}
+                className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white placeholder-gray-600 outline-none focus:border-[#FFA048]/40 transition-colors"
+                required
+              />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">{t.description}* (English)</label>
-                <textarea
-                  value={regDesc}
-                  rows={2}
-                  onChange={(e) => setRegDesc(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white outline-none"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">{t.description} (العربية)*</label>
-                <textarea
-                  value={regDescAr}
-                  rows={2}
-                  placeholder="اكتب وصفاً للخدمات والمنتجات المقدمة..."
-                  onChange={(e) => setRegDescAr(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white outline-none"
-                  required
-                />
-              </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">{t.description}*</label>
+              <textarea
+                value={regDesc}
+                rows={3}
+                placeholder="Describe your business, services, and what makes you stand out..."
+                onChange={(e) => setRegDesc(e.target.value)}
+                className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white placeholder-gray-600 outline-none focus:border-[#FFA048]/40 transition-colors resize-none"
+                required
+              />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

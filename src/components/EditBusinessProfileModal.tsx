@@ -16,16 +16,13 @@ export const EditBusinessProfileModal: React.FC<EditBusinessProfileModalProps> =
   const [name, setName] = useState(business.name);
   const [categoryId, setCategoryId] = useState(business.categoryId);
   const [subcatEn, setSubcatEn] = useState(business.subcategory.en || '');
-  const [subcatAr, setSubcatAr] = useState(business.subcategory.ar || '');
   const [descEn, setDescEn] = useState(business.description.en || '');
-  const [descAr, setDescAr] = useState(business.description.ar || '');
   const [address, setAddress] = useState(business.address || '');
   const [area, setArea] = useState(business.area || '');
   const [city, setCity] = useState(business.city || 'Baghdad');
   const [phone, setPhone] = useState(business.phone || '');
   const [whatsapp, setWhatsapp] = useState(business.whatsapp || '');
   const [hoursEn, setHoursEn] = useState(business.workingHours.en || '');
-  const [hoursAr, setHoursAr] = useState(business.workingHours.ar || '');
   const [logoUrl, setLogoUrl] = useState(business.logoUrl || '');
   const [coverUrl, setCoverUrl] = useState(business.coverUrl || '');
   const [imagePreview, setImagePreview] = useState(business.logoUrl || '');
@@ -54,13 +51,13 @@ export const EditBusinessProfileModal: React.FC<EditBusinessProfileModalProps> =
       categoryId,
       subcategory: {
         en: subcatEn,
-        ar: subcatAr,
-        fa: business.subcategory.fa || subcatAr
+        ar: subcatEn,
+        fa: business.subcategory.fa || subcatEn
       },
       description: {
         en: descEn,
-        ar: descAr,
-        fa: business.description.fa || descAr
+        ar: descEn,
+        fa: business.description.fa || descEn
       },
       address,
       area,
@@ -69,8 +66,8 @@ export const EditBusinessProfileModal: React.FC<EditBusinessProfileModalProps> =
       whatsapp,
       workingHours: {
         en: hoursEn,
-        ar: hoursAr,
-        fa: business.workingHours.fa || hoursAr
+        ar: hoursEn,
+        fa: business.workingHours.fa || hoursEn
       },
       logoUrl,
       coverUrl
@@ -174,50 +171,26 @@ export const EditBusinessProfileModal: React.FC<EditBusinessProfileModalProps> =
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">{t.subcategories}* (English)</label>
-            <input
-              type="text"
-              value={subcatEn}
-              onChange={(e) => setSubcatEn(e.target.value)}
-              className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white outline-none"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">{t.subcategories} (العربية)*</label>
-            <input
-              type="text"
-              value={subcatAr}
-              onChange={(e) => setSubcatAr(e.target.value)}
-              className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white outline-none"
-              required
-            />
-          </div>
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">{t.subcategories}*</label>
+          <input
+            type="text"
+            value={subcatEn}
+            onChange={(e) => setSubcatEn(e.target.value)}
+            className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white outline-none focus:border-[#FFA048]/40 transition-colors"
+            required
+          />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">{t.description}* (English)</label>
-            <textarea
-              value={descEn}
-              rows={2}
-              onChange={(e) => setDescEn(e.target.value)}
-              className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white outline-none"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">{t.description} (العربية)*</label>
-            <textarea
-              value={descAr}
-              rows={2}
-              onChange={(e) => setDescAr(e.target.value)}
-              className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white outline-none"
-              required
-            />
-          </div>
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">{t.description}*</label>
+          <textarea
+            value={descEn}
+            rows={3}
+            onChange={(e) => setDescEn(e.target.value)}
+            className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white outline-none focus:border-[#FFA048]/40 transition-colors resize-none"
+            required
+          />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -281,27 +254,16 @@ export const EditBusinessProfileModal: React.FC<EditBusinessProfileModalProps> =
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">{t.workingHours}* (English)</label>
-            <input
-              type="text"
-              value={hoursEn}
-              onChange={(e) => setHoursEn(e.target.value)}
-              className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white outline-none"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">{t.workingHours} (العربية)*</label>
-            <input
-              type="text"
-              value={hoursAr}
-              onChange={(e) => setHoursAr(e.target.value)}
-              className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white outline-none"
-              required
-            />
-          </div>
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">{t.workingHours}*</label>
+          <input
+            type="text"
+            value={hoursEn}
+            onChange={(e) => setHoursEn(e.target.value)}
+            placeholder="e.g. 9:00 AM – 9:00 PM"
+            className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white outline-none focus:border-[#FFA048]/40 transition-colors"
+            required
+          />
         </div>
 
         <div>

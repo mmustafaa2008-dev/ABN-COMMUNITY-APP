@@ -97,3 +97,20 @@ export interface Order {
   status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
   date: string;
 }
+
+export type JobCategory = 'IT' | 'Graphic Designing' | 'Developer' | 'Chef' | 'Maid' | 'Others';
+
+export interface Job {
+  id: string;
+  businessId: string;
+  businessName: string;
+  businessLogoUrl: string;
+  title: string;
+  category: JobCategory;
+  requirements: string;
+  salaryMin: number;
+  salaryMax: number;
+  hiringEmail: string;
+  postedDate: string;
+  isActive: boolean;
+}
