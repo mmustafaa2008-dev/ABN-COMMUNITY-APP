@@ -1,0 +1,239 @@
+/* ─── Google Fonts ───────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+Arabic:wght@400;600;700;800;900&display=swap');
+
+@import "tailwindcss";
+
+/* ─── Root Variables ────────────────────────────────────────── */
+:root {
+  --color-primary: #FFA048;
+  --color-primary-dark: #D87D2E;
+  --color-bg: #0A0705;
+  --color-surface: #0F0E0C;
+  --color-card: #13110E;
+  --color-border: #2D2319;
+  --color-text: #F4E3D7;
+  --font-en: 'Outfit', sans-serif;
+  --font-ar: 'Cairo', sans-serif;
+}
+
+/* ─── Light Mode CSS Hack ─────────────────────────────────────── */
+/* The app uses hardcoded dark colors, so we use a filter to flip it! */
+html.light {
+  filter: invert(1) hue-rotate(180deg);
+  background-color: white; /* Inverted, it becomes black, but wait: if body is black, it becomes white */
+}
+
+/* Un-invert media elements and svgs so they look normal */
+html.light img,
+html.light video,
+html.light iframe {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* ─── Base Reset & Typography ────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: var(--font-en);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior: none;
+}
+
+[dir="rtl"] body,
+[dir="rtl"] * {
+  font-family: var(--font-ar);
+}
+
+/* ─── Scrollbar Styles ───────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #2D2319;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #FFA048;
+}
+
+/* ─── Utility: hide scrollbar visually ──────────────────────── */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+}
+
+/* ─── Animations ─────────────────────────────────────────────── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes scaleUp {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
+}
+
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to   { background-position: 200% 0; }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ─── Animation Classes ─────────────────────────────────────── */
+.animate-fade-in-up {
+  animation: fadeInUp 0.35s ease both;
+}
+.animate-fade-in {
+  animation: fadeIn 0.25s ease both;
+}
+.animate-scale-up {
+  animation: scaleUp 0.3s ease both;
+}
+.animate-slide-right {
+  animation: slideInRight 0.3s ease both;
+}
+.animate-slide-left {
+  animation: slideInLeft 0.3s ease both;
+}
+.animate-pulse-soft {
+  animation: pulse-soft 2s ease-in-out infinite;
+}
+
+/* Staggered children */
+.stagger-children > *:nth-child(1) { animation-delay: 0.05s; }
+.stagger-children > *:nth-child(2) { animation-delay: 0.10s; }
+.stagger-children > *:nth-child(3) { animation-delay: 0.15s; }
+.stagger-children > *:nth-child(4) { animation-delay: 0.20s; }
+.stagger-children > *:nth-child(5) { animation-delay: 0.25s; }
+.stagger-children > *:nth-child(6) { animation-delay: 0.30s; }
+
+/* ─── Skeleton Loader ──────────────────────────────────────── */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #1A1612 25%,
+    #2D2319 50%,
+    #1A1612 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+
+/* ─── Card Hover Glow ───────────────────────────────────────── */
+.card-hover {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+}
+.card-hover:hover {
+  border-color: rgba(255, 160, 72, 0.35) !important;
+  box-shadow: 0 0 0 1px rgba(255, 160, 72, 0.15);
+  transform: translateY(-1px);
+}
+
+/* ─── Open/Closed Badge ─────────────────────────────────────── */
+.badge-open {
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #4ade80;
+}
+.badge-closed {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #f87171;
+}
+
+/* ─── Button Press Feedback ─────────────────────────────────── */
+button:active {
+  transform: scale(0.97);
+}
+
+/* ─── Focus Outline ─────────────────────────────────────────── */
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid #FFA048;
+  outline-offset: 2px;
+}
+
+/* ─── Image lazy fade-in ─────────────────────────────────────── */
+img {
+  transition: opacity 0.3s ease;
+}
+img[loading="lazy"] {
+  opacity: 0;
+}
+img[loading="lazy"].loaded {
+  opacity: 1;
+}
+
+/* ─── RTL Tweaks ─────────────────────────────────────────────── */
+[dir="rtl"] .rtl-flip {
+  transform: scaleX(-1);
+}
+
+/* ─── Phone Bezel Notch ─────────────────────────────────────── */
+.phone-notch {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 64px;
+  height: 14px;
+  background: black;
+  border-radius: 0 0 12px 12px;
+  z-index: 40;
+}
+
+/* ─── Global Selection Color ─────────────────────────────────── */
+::selection {
+  background-color: #FFA048;
+  color: black;
+}
+
+/* ─── Tab Transition Wrapper ─────────────────────────────────── */
+.tab-view {
+  animation: fadeInUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
