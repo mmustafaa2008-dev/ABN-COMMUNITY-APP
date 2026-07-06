@@ -260,7 +260,7 @@ class _BusinessCard extends StatelessWidget {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(LucideIcons.badgeCheck, size: 12, color: Colors.white),
+                            const Icon(LucideIcons.badge_check, size: 12, color: Colors.white),
                             const SizedBox(width: 4),
                             Text(t(lang, 'verified'), style: const TextStyle(color: Colors.white, fontSize: 11)),
                           ],
@@ -309,7 +309,7 @@ class _BusinessCard extends StatelessWidget {
                         const SizedBox(height: 4),
                         Row(
                           children: [
-                            const Icon(LucideIcons.mapPin, size: 12, color: Color(0xFF0F4C3A)),
+                            const Icon(LucideIcons.map_pin, size: 12, color: Color(0xFF0F4C3A)),
                             const SizedBox(width: 4),
                             Text(
                               '${business.city} · ${business.area}',

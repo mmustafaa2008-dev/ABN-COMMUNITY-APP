@@ -116,7 +116,7 @@ class _BusinessDetailsModalState extends State<_BusinessDetailsModal> {
                                     Expanded(
                                       child: Text(biz.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                                     ),
-                                    if (biz.isVerified) const Icon(LucideIcons.badgeCheck, color: Color(0xFF0F4C3A), size: 20),
+                                    if (biz.isVerified) const Icon(LucideIcons.badge_check, color: Color(0xFF0F4C3A), size: 20),
                                   ],
                                 ),
                                 Text(biz.subcategory[lang] ?? biz.subcategory['en'] ?? '',
@@ -136,7 +136,7 @@ class _BusinessDetailsModalState extends State<_BusinessDetailsModal> {
                           Text('${biz.rating.toStringAsFixed(1)} (${biz.reviewsCount})',
                               style: const TextStyle(fontWeight: FontWeight.w600)),
                           const SizedBox(width: 16),
-                          const Icon(LucideIcons.mapPin, size: 14, color: Color(0xFF0F4C3A)),
+                          const Icon(LucideIcons.map_pin, size: 14, color: Color(0xFF0F4C3A)),
                           const SizedBox(width: 4),
                           Expanded(child: Text('${biz.city} · ${biz.area} · ${biz.address}', style: const TextStyle(fontSize: 12))),
                         ],
@@ -161,10 +161,10 @@ class _BusinessDetailsModalState extends State<_BusinessDetailsModal> {
                         runSpacing: 8,
                         children: [
                           _ContactButton(icon: LucideIcons.phone, label: t(lang, 'callNow'), color: Colors.blue),
-                          _ContactButton(icon: LucideIcons.messageCircle, label: t(lang, 'openWhatsapp'), color: Colors.green),
+                          _ContactButton(icon: LucideIcons.message_circle, label: t(lang, 'openWhatsapp'), color: Colors.green),
                           if (biz.website != null && biz.website!.isNotEmpty)
                             _ContactButton(icon: LucideIcons.globe, label: t(lang, 'openWebsite'), color: Colors.purple),
-                          _ContactButton(icon: LucideIcons.mapPin, label: t(lang, 'openMap'), color: Colors.orange),
+                          _ContactButton(icon: LucideIcons.map_pin, label: t(lang, 'openMap'), color: Colors.orange),
                         ],
                       ),
 
@@ -178,7 +178,7 @@ class _BusinessDetailsModalState extends State<_BusinessDetailsModal> {
                           Text(t(lang, 'reviews'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                           TextButton.icon(
                             onPressed: () => setState(() => _showReviewForm = !_showReviewForm),
-                            icon: Icon(_showReviewForm ? LucideIcons.x : LucideIcons.penLine, size: 16),
+                            icon: Icon(_showReviewForm ? LucideIcons.x : LucideIcons.pen_line, size: 16),
                             label: Text(t(lang, 'writeReview')),
                             style: TextButton.styleFrom(foregroundColor: const Color(0xFF0F4C3A)),
                           ),

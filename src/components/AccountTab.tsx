@@ -10,10 +10,10 @@ import {
   Globe,
   LogOut,
   ChevronRight,
-  CheckCircle,
   Eye,
-  Info
+  Zap,
 } from 'lucide-react';
+import { EditBusinessProfileModal } from './EditBusinessProfileModal';
 
 interface AccountTabProps {
   onOpenAuth: () => void;
@@ -38,6 +38,7 @@ export const AccountTab: React.FC<AccountTabProps> = ({ onOpenAuth, onSwitchTab 
   // Modals for sub-sections
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
 
   const activeNotifs = notifications.filter(
     (n) => n.receiverRole === 'all' || n.receiverRole === currentUser?.role
@@ -49,7 +50,32 @@ export const AccountTab: React.FC<AccountTabProps> = ({ onOpenAuth, onSwitchTab 
     markNotificationsAsRead();
   };
 
-  const myBusiness = currentUser?.role === 'business' ? businesses.find(b => b.ownerId === currentUser.id) : null;
+  const isBusinessUser = currentUser?.role === 'business' || currentUser?.role === 'service_provider';
+  const myBusiness = isBusinessUser ? businesses.find(b => b.ownerId === currentUser?.id) : null;
+
+  const roleBadgeLabel = () => {
+    if (!currentUser) return '';
+    if (currentUser.role === 'service_provider') return 'Service Provider';
+    if (currentUser.role === 'business') return 'Business';
+    if (currentUser.role === 'admin') return 'Admin';
+    return 'Customer';
+  };
+
+  const subscriptionLabel = () => {
+    if (!myBusiness) return '';
+    if (myBusiness.status !== 'active') return 'Suspended';
+    if (currentUser?.role === 'service_provider') return '$30 Service Plan';
+    return '$50 Business Plan';
+  };
+
+  if (isEditingProfile && myBusiness) {
+    return (
+      <EditBusinessProfileModal
+        business={myBusiness}
+        onClose={() => setIsEditingProfile(false)}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6" id="account-tab-container">
@@ -94,7 +120,12 @@ export const AccountTab: React.FC<AccountTabProps> = ({ onOpenAuth, onSwitchTab 
               <div className="min-w-0 flex-1">
                 <h3 className="text-xs font-black text-white truncate max-w-[160px]">{currentUser.email}</h3>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-[9px] text-green-400 font-bold block">Signed in ({currentUser.role})</span>
+                  <span className="text-[9px] text-green-400 font-bold flex items-center gap-1">
+                    {currentUser.role === 'service_provider' && <Zap className="w-2.5 h-2.5 text-blue-400" />}
+                    {currentUser.role === 'business' && <Briefcase className="w-2.5 h-2.5 text-[#FFA048]" />}
+                    {currentUser.role === 'admin' && <Shield className="w-2.5 h-2.5 text-red-400" />}
+                    Signed in ({roleBadgeLabel()})
+                  </span>
                 </div>
               </div>
             </div>
@@ -107,22 +138,34 @@ export const AccountTab: React.FC<AccountTabProps> = ({ onOpenAuth, onSwitchTab 
             </button>
           </div>
           
-          {/* Active Business Metadata */}
+          {/* Active Business / Service Provider Metadata */}
           {myBusiness && (
-            <div className="p-4 rounded-3xl bg-[#13110E] border border-[#2D2319] space-y-3 shadow-sm">
+            <div className={`p-4 rounded-3xl bg-[#13110E] border space-y-3 shadow-sm ${
+              currentUser?.role === 'service_provider' ? 'border-blue-700/40' : 'border-[#2D2319]'
+            }`}>
               <div className="flex items-center gap-2 mb-1">
-                <Briefcase className="w-4 h-4 text-[#FFA048]" />
-                <h4 className="text-xs font-black text-white">Business Profile Metadata</h4>
+                {currentUser?.role === 'service_provider'
+                  ? <Zap className="w-4 h-4 text-blue-400" />
+                  : <Briefcase className="w-4 h-4 text-[#FFA048]" />}
+                <h4 className="text-xs font-black text-white">
+                  {currentUser?.role === 'service_provider' ? 'Service Profile Metadata' : 'Business Profile Metadata'}
+                </h4>
               </div>
               <div className="grid grid-cols-2 gap-3 text-[10px]">
                 <div>
-                  <span className="text-gray-500 block mb-0.5">Business Name</span>
+                  <span className="text-gray-500 block mb-0.5">
+                    {currentUser?.role === 'service_provider' ? 'Service Name' : 'Business Name'}
+                  </span>
                   <span className="text-white font-bold">{myBusiness.name}</span>
                 </div>
                 <div>
                   <span className="text-gray-500 block mb-0.5">Subscription Status</span>
-                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#FFA048]/20 text-[#FFA048] border border-[#FFA048]/30 inline-block">
-                    {myBusiness.status === 'active' ? '$50 Business Plan' : 'Suspended'} (Renews {myBusiness.membershipExpiryDate})
+                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold inline-block border ${
+                    currentUser?.role === 'service_provider'
+                      ? 'bg-blue-900/30 text-blue-300 border-blue-700/40'
+                      : 'bg-[#FFA048]/20 text-[#FFA048] border-[#FFA048]/30'
+                  }`}>
+                    {subscriptionLabel()} (Renews {myBusiness.membershipExpiryDate})
                   </span>
                 </div>
                 <div>
@@ -136,24 +179,48 @@ export const AccountTab: React.FC<AccountTabProps> = ({ onOpenAuth, onSwitchTab 
               </div>
             </div>
           )}
+
+          {myBusiness && (
+            <button
+              onClick={() => setIsEditingProfile(true)}
+              className="w-full flex items-center justify-between p-4 rounded-2xl bg-[#13110E] border border-[#2D2319] hover:border-[#FFA048]/40 transition-all group"
+              id="btn-edit-business-profile"
+            >
+              <span className="flex items-center gap-3 text-xs text-gray-300 font-semibold">
+                <span className="text-base" aria-hidden="true">📝</span>
+                {language === 'en' ? 'Edit Business Profile' : 'تعديل بيانات العمل'}
+              </span>
+              <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-[#FFA048]" />
+            </button>
+          )}
         </div>
       )}
 
       {/* PORTAL NAVIGATION BLOCKS — role-gated */}
       <div className="grid grid-cols-2 gap-3" id="account-portals-row">
-        {/* Business Portal — only for business owners and admins */}
-        {currentUser && (currentUser.role === 'business' || currentUser.role === 'admin') ? (
+        {/* Business Portal — for business owners, service providers, and admins */}
+        {currentUser && (currentUser.role === 'business' || currentUser.role === 'service_provider' || currentUser.role === 'admin') ? (
           <button
-            onClick={() => onSwitchTab('business')}
+            onClick={() => {
+              // Registered users go to management dashboard; unregistered go to registration flow
+              const hasListing = businesses.some(b => b.ownerId === currentUser.id);
+              onSwitchTab(hasListing || currentUser.role === 'admin' ? 'portal-management' : 'business');
+            }}
             className="p-4 rounded-3xl bg-[#13110E] border border-[#2D2319] hover:border-[#FFA048]/40 transition-all flex flex-col text-left space-y-4 shadow-sm group"
             id="block-nav-business"
           >
             <div className="w-10 h-10 rounded-2xl bg-[#FFA048]/10 text-[#FFA048] flex items-center justify-center border border-[#3A2E21]/60 group-hover:scale-105 transition-transform">
-              <Briefcase className="w-5 h-5 text-[#FFA048]" />
+              {currentUser.role === 'service_provider'
+                ? <Zap className="w-5 h-5 text-blue-400" />
+                : <Briefcase className="w-5 h-5 text-[#FFA048]" />}
             </div>
             <div>
               <h4 className="text-xs font-black text-white">{t.businessPortal}</h4>
-              <span className="text-[9px] text-gray-500 block mt-0.5">{t.portalSub}</span>
+              <span className="text-[9px] text-gray-500 block mt-0.5">
+                {currentUser.role === 'service_provider'
+                  ? (language === 'en' ? 'Service dashboard & profile' : 'لوحة تحكم الخدمة')
+                  : t.portalSub}
+              </span>
             </div>
           </button>
         ) : (

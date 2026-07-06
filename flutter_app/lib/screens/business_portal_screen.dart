@@ -13,21 +13,7 @@ class BusinessPortalScreen extends StatefulWidget {
   State<BusinessPortalScreen> createState() => _BusinessPortalScreenState();
 }
 
-class _BusinessPortalScreenState extends State<BusinessPortalScreen> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
+class _BusinessPortalScreenState extends State<BusinessPortalScreen> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<DirectoryProvider>();
@@ -47,7 +33,7 @@ class _BusinessPortalScreenState extends State<BusinessPortalScreen> with Single
     }
 
     final biz = myBusiness.first;
-    return _BusinessDashboard(business: biz, provider: provider, lang: lang, tabController: _tabController);
+    return _BusinessInventoryView(business: biz, provider: provider, lang: lang);
   }
 }
 
@@ -82,7 +68,7 @@ class _GuestPortalView extends StatelessWidget {
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: onOpenAuth,
-                  icon: const Icon(LucideIcons.logIn),
+                  icon: const Icon(LucideIcons.log_in),
                   label: Text(t(lang, 'signIn')),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF0F4C3A),
@@ -253,324 +239,171 @@ class _RegisterBusinessViewState extends State<_RegisterBusinessView> {
   }
 }
 
-class _BusinessDashboard extends StatelessWidget {
+class _BusinessInventoryView extends StatelessWidget {
   final Business business;
   final DirectoryProvider provider;
   final String lang;
-  final TabController tabController;
 
-  const _BusinessDashboard({
+  const _BusinessInventoryView({
     required this.business,
     required this.provider,
     required this.lang,
-    required this.tabController,
   });
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final myPayments = provider.payments.where((p) => p.businessId == business.id).toList();
+    final myProducts = provider.products.where((p) => p.businessId == business.id).toList();
 
     return Scaffold(
-      body: NestedScrollView(
-        headerSliverBuilder: (context, innerBoxIsScrolled) => [
-          SliverAppBar(
-            expandedHeight: 160,
-            floating: false,
-            pinned: true,
-            backgroundColor: const Color(0xFF0F4C3A),
-            foregroundColor: Colors.white,
-            title: Text(t(lang, 'businessPortal')),
-            flexibleSpace: FlexibleSpaceBar(
-              background: Stack(
-                fit: StackFit.expand,
+      body: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Image.network(business.coverUrl, fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(color: const Color(0xFF0F4C3A))),
-                  Container(color: Colors.black45),
-                  Positioned(
-                    bottom: 60,
-                    left: 16,
-                    child: Row(
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: Image.network(business.logoUrl, width: 48, height: 48, fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Container(width: 48, height: 48, color: Colors.white24)),
+                        Text(
+                          t(lang, 'inventory'),
+                          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                         ),
-                        const SizedBox(width: 12),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(business.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                            Text(
-                              business.status == BusinessStatus.active ? t(lang, 'active') : t(lang, 'suspended'),
-                              style: TextStyle(color: business.status == BusinessStatus.active ? Colors.greenAccent : Colors.redAccent, fontSize: 12),
-                            ),
-                          ],
+                        const SizedBox(height: 4),
+                        Text(
+                          t(lang, 'inventorySub'),
+                          style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                         ),
                       ],
                     ),
+                  ),
+                  FloatingActionButton.small(
+                    onPressed: () {},
+                    backgroundColor: const Color(0xFF0F4C3A),
+                    child: const Icon(LucideIcons.plus, color: Colors.white),
                   ),
                 ],
               ),
             ),
-            bottom: TabBar(
-              controller: tabController,
-              indicatorColor: Colors.white,
-              labelColor: Colors.white,
-              unselectedLabelColor: Colors.white60,
-              tabs: const [
-                Tab(text: 'Overview'),
-                Tab(text: 'Payments'),
-                Tab(text: 'Orders'),
-              ],
-            ),
           ),
-        ],
-        body: TabBarView(
-          controller: tabController,
-          children: [
-            // Overview tab
-            ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                _InfoCard(title: t(lang, 'membershipStatus'), children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          if (myProducts.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(t(lang, 'memberExpiry'), style: const TextStyle(fontSize: 13)),
-                      Text(business.membershipExpiryDate,
-                          style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F4C3A))),
+                      Container(
+                        width: 64,
+                        height: 64,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0F4C3A).withOpacity(0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(LucideIcons.package, size: 32, color: Color(0xFF0F4C3A)),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(t(lang, 'noProductsYet'),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      const SizedBox(height: 8),
+                      Text(
+                        t(lang, 'addFirstProduct'),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                      ),
                     ],
                   ),
-                ]),
-                const SizedBox(height: 12),
-                _InfoCard(title: t(lang, 'paymentGateway'), children: [
-                  Text(t(lang, 'renewDescription'), style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () => _showPaymentDialog(context),
-                      icon: const Icon(LucideIcons.creditCard, size: 16),
-                      label: Text(t(lang, 'renewMembership')),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0F4C3A),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              sliver: SliverGrid(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 0.72,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    final prod = myProducts[index];
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: colorScheme.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.grey.withOpacity(0.2)),
                       ),
-                    ),
-                  ),
-                ]),
-                const SizedBox(height: 12),
-                _InfoCard(title: t(lang, 'reviews'), children: [
-                  ...provider.reviews.where((r) => r.businessId == business.id).take(3).map((r) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(r.userName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                            const Spacer(),
-                            const Icon(LucideIcons.star, size: 12, color: Colors.amber),
-                            const SizedBox(width: 3),
-                            Text(r.rating.toStringAsFixed(1), style: const TextStyle(fontSize: 12)),
-                          ],
-                        ),
-                        Text(r.comment, style: const TextStyle(fontSize: 12)),
-                        const Divider(height: 12),
-                      ],
-                    ),
-                  )),
-                ]),
-              ],
-            ),
-
-            // Payments tab
-            ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                _InfoCard(title: t(lang, 'paymentHistory'), children: myPayments.isEmpty
-                    ? [Text(t(lang, 'noNotifications'), style: TextStyle(color: Colors.grey[500]))]
-                    : myPayments.map((p) => Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          child: Row(
-                            children: [
-                              const Icon(LucideIcons.receipt, size: 16, color: Color(0xFF0F4C3A)),
-                              const SizedBox(width: 8),
-                              Expanded(child: Text(p.refNo, style: const TextStyle(fontSize: 13))),
-                              Text('\$${p.amount.toStringAsFixed(0)}',
-                                  style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F4C3A))),
-                              const SizedBox(width: 8),
-                              Text(p.date, style: TextStyle(fontSize: 11, color: Colors.grey[500])),
-                            ],
-                          ),
-                        )).toList()),
-              ],
-            ),
-
-            // Orders tab
-            ListView(
-              padding: const EdgeInsets.all(16),
-              children: provider.orders
-                  .where((o) => o.businessId == business.id)
-                  .map((o) => Container(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: colorScheme.surface,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey.withOpacity(0.2)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      clipBehavior: Clip.antiAlias,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Stack(
+                              fit: StackFit.expand,
                               children: [
-                                Text(o.customerName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                _OrderStatusBadge(status: o.status),
+                                Image.network(
+                                  prod.imageUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) =>
+                                      Container(color: const Color(0xFF0F4C3A).withOpacity(0.1)),
+                                ),
+                                if (!prod.inStock)
+                                  Container(
+                                    color: Colors.black54,
+                                    alignment: Alignment.center,
+                                    child: const Text(
+                                      'OUT OF STOCK',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
                               ],
                             ),
-                            const SizedBox(height: 4),
-                            Text('\$${o.totalAmount.toStringAsFixed(2)}',
-                                style: const TextStyle(color: Color(0xFF0F4C3A), fontWeight: FontWeight.w600)),
-                            const SizedBox(height: 8),
-                            DropdownButton<OrderStatus>(
-                              value: o.status,
-                              isDense: true,
-                              underline: const SizedBox(),
-                              items: OrderStatus.values.map((s) => DropdownMenuItem(
-                                    value: s,
-                                    child: Text(s.name, style: const TextStyle(fontSize: 12)),
-                                  )).toList(),
-                              onChanged: (s) {
-                                if (s != null) provider.updateOrderStatus(o.id, s);
-                              },
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  prod.name[lang] ?? prod.name['en'] ?? '',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '\$${prod.price.toStringAsFixed(2)}',
+                                  style: const TextStyle(
+                                    color: Color(0xFF0F4C3A),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                      ))
-                  .toList(),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                  childCount: myProducts.length,
+                ),
+              ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showPaymentDialog(BuildContext context) {
-    final cardCtrl = TextEditingController();
-    final expiryCtrl = TextEditingController();
-    final cvcCtrl = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text(t(lang, 'paymentGateway')),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: cardCtrl, decoration: InputDecoration(labelText: t(lang, 'cardNumber')), keyboardType: TextInputType.number),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(child: TextField(controller: expiryCtrl, decoration: InputDecoration(labelText: t(lang, 'cardExpiry')))),
-                const SizedBox(width: 12),
-                Expanded(child: TextField(controller: cvcCtrl, decoration: InputDecoration(labelText: t(lang, 'cardCVC')))),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              provider.addPayment(PaymentRecord(
-                id: 'pay-${DateTime.now().millisecondsSinceEpoch}',
-                businessId: business.id,
-                amount: 50.0,
-                date: DateTime.now().toIso8601String().split('T')[0],
-                status: PaymentStatus.success,
-                refNo: 'TXN-${DateTime.now().millisecondsSinceEpoch}',
-              ));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Payment successful! Membership renewed.')),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0F4C3A),
-              foregroundColor: Colors.white,
-            ),
-            child: Text(t(lang, 'processPayment')),
-          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],
       ),
-    );
-  }
-}
-
-class _InfoCard extends StatelessWidget {
-  final String title;
-  final List<Widget> children;
-  const _InfoCard({required this.title, required this.children});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 3))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-          const SizedBox(height: 12),
-          ...children,
-        ],
-      ),
-    );
-  }
-}
-
-class _OrderStatusBadge extends StatelessWidget {
-  final OrderStatus status;
-  const _OrderStatusBadge({required this.status});
-
-  @override
-  Widget build(BuildContext context) {
-    Color color;
-    switch (status) {
-      case OrderStatus.pending:
-        color = Colors.orange;
-        break;
-      case OrderStatus.processing:
-        color = Colors.blue;
-        break;
-      case OrderStatus.shipped:
-        color = Colors.purple;
-        break;
-      case OrderStatus.delivered:
-        color = Colors.green;
-        break;
-      case OrderStatus.cancelled:
-        color = Colors.red;
-        break;
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(status.name, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
     );
   }
 }

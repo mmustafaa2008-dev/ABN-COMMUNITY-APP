@@ -54,7 +54,7 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'biz-noor',
-    ownerId: 'owner-noor',
+    ownerId: 'service_provider-serviceshiadirectorycom',
     name: 'Noor Electricians',
     logoUrl: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&q=80&w=200&h=200',
     coverUrl: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&q=80&w=1200&h=400',
@@ -73,7 +73,7 @@ export const INITIAL_BUSINESSES: Business[] = [
     whatsapp: '+17809876543',
     website: '',
     workingHours: { en: '9:00 AM - 9:00 PM (24/7 Available for emergency)', ar: '9:00 صباحاً - 9:00 مساءً (متوفر 24/7 للطوارئ)' },
-    membershipExpiryDate: '2026-08-20',
+    membershipExpiryDate: '2026-10-15',
     gallery: [
       'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&q=80&w=600&h=400'
     ],

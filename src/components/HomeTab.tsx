@@ -266,20 +266,24 @@ export const HomeTab: React.FC<HomeTabProps> = ({
 
 
 
-      {/* Register Banner */}
-      <div className="animate-fade-in-up" style={{animationDelay:'0.15s'}}>
-        <button
-          onClick={() => onSwitchTab('business')}
-          className="w-full p-4 rounded-3xl bg-gradient-to-r from-[#FFA048] to-[#D87D2E] text-black shadow-lg hover:shadow-xl transition-all active:scale-95 flex items-center justify-between"
-          id="btn-register-banner"
-        >
-          <div className="text-left">
-            <h2 className="text-lg font-black">{language === 'en' ? 'Register as a Business' : 'سجل كصاحب عمل'}</h2>
-            <p className="text-xs font-semibold opacity-80">{language === 'en' ? 'Join the community directory today' : 'انضم لدليل المجتمع اليوم'}</p>
-          </div>
-          <ArrowRight className="w-6 h-6" />
-        </button>
-      </div>
+      {/* Register Banner — hidden for business owners, service providers, and anyone with an active listing */}
+      {currentUser?.role !== 'business' &&
+        currentUser?.role !== 'service_provider' &&
+        !businesses.some((b) => b.ownerId === currentUser?.id) && (
+        <div className="animate-fade-in-up" style={{animationDelay:'0.15s'}}>
+          <button
+            onClick={() => onSwitchTab('business')}
+            className="w-full p-4 rounded-3xl bg-gradient-to-r from-[#FFA048] to-[#D87D2E] text-black shadow-lg hover:shadow-xl transition-all active:scale-95 flex items-center justify-between"
+            id="btn-register-banner"
+          >
+            <div className="text-left">
+              <h2 className="text-lg font-black">{language === 'en' ? 'Register as a Business' : 'سجل كصاحب عمل'}</h2>
+              <p className="text-xs font-semibold opacity-80">{language === 'en' ? 'Join the community directory today' : 'انضم لدليل المجتمع اليوم'}</p>
+            </div>
+            <ArrowRight className="w-6 h-6" />
+          </button>
+        </div>
+      )}
 
       {/* All listings directory strip */}
       <div className="space-y-3 animate-fade-in-up" style={{animationDelay:'0.20s'}} id="home-listings-block">

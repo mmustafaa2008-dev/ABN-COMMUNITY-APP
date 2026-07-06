@@ -314,7 +314,7 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (biz) {
       addNotification(
         'Subscription Renewed ✓',
-        `Membership for ${biz.name} has been renewed successfully for $50/month. Thank you.`,
+        `Membership for ${biz.name} has been renewed successfully for $${payment.amount}/month. Thank you.`,
         'business'
       );
     }

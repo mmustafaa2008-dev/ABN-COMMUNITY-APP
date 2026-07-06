@@ -70,18 +70,6 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
-  late List<Widget> _screens;
-
-  @override
-  void initState() {
-    super.initState();
-    _screens = [
-      const HomeScreen(),
-      const SearchScreen(),
-      const SavedScreen(),
-      BusinessPortalScreen(onOpenAuth: _openAuth),
-    ];
-  }
 
   void _openAuth() {
     showAuthModal(context);
@@ -91,48 +79,81 @@ class _MainNavigationState extends State<MainNavigation> {
   Widget build(BuildContext context) {
     final provider = context.watch<DirectoryProvider>();
     final lang = provider.language;
-    final isAdmin = provider.currentUser?.role == UserRole.admin;
+    final user = provider.currentUser;
+    final isAdmin = user?.role == UserRole.admin;
+    final isBusiness = user?.role == UserRole.business;
+    final hasBusinessListing = isBusiness &&
+        user != null &&
+        provider.businesses.any((b) => b.ownerId == user.id);
 
-    final screens = List<Widget>.from(_screens);
-    if (isAdmin) {
-      screens.add(const AdminPanelScreen());
+    final screens = hasBusinessListing
+        ? <Widget>[
+            BusinessPortalScreen(onOpenAuth: _openAuth),
+            const AccountScreen(),
+          ]
+        : <Widget>[
+            const HomeScreen(),
+            const SearchScreen(),
+            const SavedScreen(),
+            BusinessPortalScreen(onOpenAuth: _openAuth),
+            if (isAdmin) const AdminPanelScreen(),
+          ];
+
+    final safeIndex = _currentIndex.clamp(0, screens.length - 1);
+    if (safeIndex != _currentIndex) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _currentIndex = safeIndex);
+      });
     }
+
+    final destinations = hasBusinessListing
+        ? [
+            NavigationDestination(
+              icon: const Icon(Icons.home),
+              label: t(lang, 'home'),
+            ),
+            NavigationDestination(
+              icon: const Icon(LucideIcons.user),
+              label: t(lang, 'account'),
+            ),
+          ]
+        : [
+            NavigationDestination(
+              icon: const Icon(Icons.home),
+              label: t(lang, 'home'),
+            ),
+            NavigationDestination(
+              icon: const Icon(LucideIcons.search),
+              label: t(lang, 'search'),
+            ),
+            NavigationDestination(
+              icon: const Icon(LucideIcons.heart),
+              label: t(lang, 'saved'),
+            ),
+            NavigationDestination(
+              icon: const Icon(LucideIcons.briefcase),
+              label: t(lang, 'portal'),
+            ),
+            if (isAdmin)
+              const NavigationDestination(
+                icon: Icon(Icons.tune),
+                label: 'Admin',
+              ),
+          ];
 
     return Scaffold(
       body: IndexedStack(
-        index: _currentIndex,
+        index: safeIndex,
         children: screens,
       ),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
+        selectedIndex: safeIndex,
         onDestinationSelected: (index) {
           setState(() {
             _currentIndex = index;
           });
         },
-        destinations: [
-          NavigationDestination(
-            icon: const Icon(LucideIcons.home),
-            label: t(lang, 'home'),
-          ),
-          NavigationDestination(
-            icon: const Icon(LucideIcons.search),
-            label: t(lang, 'search'),
-          ),
-          NavigationDestination(
-            icon: const Icon(LucideIcons.heart),
-            label: t(lang, 'saved'),
-          ),
-          NavigationDestination(
-            icon: const Icon(LucideIcons.briefcase),
-            label: t(lang, 'portal'),
-          ),
-          if (isAdmin)
-            const NavigationDestination(
-              icon: Icon(LucideIcons.sliders),
-              label: 'Admin',
-            ),
-        ],
+        destinations: destinations,
       ),
     );
   }

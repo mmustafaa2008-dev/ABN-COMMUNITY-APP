@@ -7,9 +7,7 @@ import { HomeTab } from './components/HomeTab';
 import { SearchTab } from './components/SearchTab';
 import { SavedTab } from './components/SavedTab';
 
-import { BusinessInventoryTab } from './components/BusinessInventoryTab';
-import { BusinessOrdersTab } from './components/BusinessOrdersTab';
-import { BusinessProfitLossTab } from './components/BusinessProfitLossTab';
+import { BusinessPortalTab } from './components/BusinessPortalTab';
 import { AccountTab } from './components/AccountTab';
 import { AdminPanelTab } from './components/AdminPanelTab';
 import { Business } from './types';
@@ -20,11 +18,10 @@ import {
   Briefcase,
   User,
   Shield,
-  Package,
-  ShoppingBag,
-  TrendingUp,
   Smartphone,
   Info,
+  Zap,
+  ArrowLeft,
 } from 'lucide-react';
 
 // ── Live Clock Hook ────────────────────────────────────────────
@@ -63,6 +60,8 @@ const TabView: React.FC<{ children: React.ReactNode; tabKey: string }> = ({ chil
 );
 
 // ── Shared Tab Content Renderer ────────────────────────────────
+const CONSUMER_TABS = ['home', 'search', 'saved'] as const;
+
 function TabContent({
   activeTab,
   setActiveTab,
@@ -70,6 +69,8 @@ function TabContent({
   searchQueryText,
   setSearchQueryText,
   setIsAuthOpen,
+  isBusinessPortal,
+  hasBusinessListing,
 }: {
   activeTab: string;
   setActiveTab: (t: string) => void;
@@ -77,10 +78,12 @@ function TabContent({
   searchQueryText: string;
   setSearchQueryText: (q: string) => void;
   setIsAuthOpen: (v: boolean) => void;
+  isBusinessPortal?: boolean;
+  hasBusinessListing?: boolean;
 }) {
   return (
     <>
-      {activeTab === 'home' && (
+      {!isBusinessPortal && activeTab === 'home' && (
         <TabView tabKey="home">
           <HomeTab
             onSelectBusiness={setSelectedBusiness}
@@ -90,7 +93,7 @@ function TabContent({
           />
         </TabView>
       )}
-      {activeTab === 'search' && (
+      {!isBusinessPortal && activeTab === 'search' && (
         <TabView tabKey="search">
           <SearchTab
             initialQuery={searchQueryText}
@@ -100,40 +103,56 @@ function TabContent({
           />
         </TabView>
       )}
-      {activeTab === 'saved' && (
+      {!isBusinessPortal && activeTab === 'saved' && (
         <TabView tabKey="saved">
           <SavedTab onSelectBusiness={setSelectedBusiness} onSwitchTab={setActiveTab} />
         </TabView>
       )}
       {activeTab === 'business' && (
         <TabView tabKey="business">
-          <BusinessInventoryTab />
+          {isBusinessPortal ? (
+            /* Registered business owners see the same full directory feed as consumers,
+               but the "Register as a Business" banner is hidden by HomeTab's own conditional */
+            <HomeTab
+              onSelectBusiness={setSelectedBusiness}
+              onSwitchTab={setActiveTab}
+              onOpenAuth={() => setIsAuthOpen(true)}
+              setSearchQueryText={setSearchQueryText}
+            />
+          ) : (
+            <BusinessPortalTab onOpenAuth={() => setIsAuthOpen(true)} />
+          )}
         </TabView>
       )}
-      {activeTab === 'orders' && (
-        <TabView tabKey="orders">
-          <BusinessOrdersTab />
-        </TabView>
-      )}
-      {activeTab === 'profitloss' && (
-        <TabView tabKey="profitloss">
-          <BusinessProfitLossTab />
-        </TabView>
-      )}
+
       {activeTab === 'account' && (
         <TabView tabKey="account">
           <AccountTab onOpenAuth={() => setIsAuthOpen(true)} onSwitchTab={setActiveTab} />
         </TabView>
       )}
+      {/* Portal Management — accessed via AccountTab Business Portal tile */}
+      {activeTab === 'portal-management' && (
+        <TabView tabKey="portal-management">
+          <BusinessPortalTab
+            onOpenAuth={() => setIsAuthOpen(true)}
+            onBack={() => setActiveTab('account')}
+          />
+        </TabView>
+      )}
       {activeTab === 'admin' && (
         <TabView tabKey="admin">
-          <div className="space-y-4">
-            <button
-              onClick={() => setActiveTab('account')}
-              className="text-xs text-[#FFA048] hover:underline flex items-center gap-1"
-            >
-              ← Back to Account
-            </button>
+          <div className="space-y-5">
+            {/* Prominent back button header */}
+            <div className="flex items-center gap-3 pb-3 border-b border-[#2D2319]">
+              <button
+                onClick={() => setActiveTab('account')}
+                className="p-2 rounded-full bg-[#191613] hover:bg-[#2D251C] border border-[#2D2319] transition-colors"
+                aria-label="Back to Account"
+              >
+                <ArrowLeft className="w-4 h-4 text-[#FFA048]" />
+              </button>
+              <span className="text-xs font-bold text-[#FFA048] uppercase tracking-wider">Admin Panel</span>
+            </div>
             <AdminPanelTab />
           </div>
         </TabView>
@@ -150,6 +169,7 @@ function BottomNav({
   t,
   isAdmin,
   isBusiness,
+  hasBusinessListing,
 }: {
   activeTab: string;
   setActiveTab: (t: string) => void;
@@ -157,9 +177,17 @@ function BottomNav({
   t: Record<string, string>;
   isAdmin?: boolean;
   isBusiness?: boolean;
+  hasBusinessListing?: boolean;
 }) {
+  // Account is active on its own tab AND on any portal sub-page
+  const isAccountActive = activeTab === 'account' || activeTab === 'portal-management';
+  // Home is active on the consumer home OR the business directory tab
+  const isHomeActive = activeTab === 'home' || activeTab === 'business';
+
   return (
     <nav className="flex justify-between items-center h-full px-2">
+
+      {/* Consumer tabs — ONLY for non-business, non-admin users */}
       {(!isAdmin && !isBusiness) && (
         <>
           <button
@@ -189,32 +217,19 @@ function BottomNav({
         </>
       )}
 
-      {isBusiness && (
-        <>
-          <button
-            onClick={() => setActiveTab('business')}
-            className={`flex flex-col items-center justify-center flex-1 py-2 transition-all ${activeTab === 'business' ? 'text-[#FFA048] scale-110 font-black' : 'text-gray-500 hover:text-white'}`}
-          >
-            <Package className="w-5 h-5 mb-0.5" />
-            <span className="text-[9px] tracking-tight">Home</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('orders')}
-            className={`flex flex-col items-center justify-center flex-1 py-2 transition-all ${activeTab === 'orders' ? 'text-[#FFA048] scale-110 font-black' : 'text-gray-500 hover:text-white'}`}
-          >
-            <ShoppingBag className="w-5 h-5 mb-0.5" />
-            <span className="text-[9px] tracking-tight">Orders</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('profitloss')}
-            className={`flex flex-col items-center justify-center flex-1 py-2 transition-all ${activeTab === 'profitloss' ? 'text-[#FFA048] scale-110 font-black' : 'text-gray-500 hover:text-white'}`}
-          >
-            <TrendingUp className="w-5 h-5 mb-0.5" />
-            <span className="text-[9px] tracking-tight">P&L</span>
-          </button>
-        </>
+      {/* Portal Home tab — shown for ALL business/service_provider users (replaces consumer 3-tab set) */}
+      {isBusiness && !isAdmin && (
+        <button
+          onClick={() => { setSearchQueryText(''); setActiveTab(hasBusinessListing ? 'business' : 'home'); }}
+          className={`flex flex-col items-center justify-center flex-1 py-2 transition-all ${isHomeActive ? 'text-[#FFA048] scale-110 font-black' : 'text-gray-500 hover:text-white'}`}
+          id="tab-btn-portal-home"
+        >
+          <Home className="w-5 h-5 mb-0.5" />
+          <span className="text-[9px] tracking-tight">{t.home}</span>
+        </button>
       )}
 
+      {/* Admin tab */}
       {isAdmin && (
         <button
           onClick={() => setActiveTab('admin')}
@@ -225,9 +240,11 @@ function BottomNav({
           <span className="text-[9px] tracking-tight">{t.adminPanel || 'Admin'}</span>
         </button>
       )}
+
+      {/* Account tab — always visible; highlights for account, portal-management, and admin sub-pages */}
       <button
         onClick={() => setActiveTab('account')}
-        className={`flex flex-col items-center justify-center flex-1 py-2 transition-all ${activeTab === 'account' || activeTab === 'admin' ? 'text-[#FFA048] scale-110 font-black' : 'text-gray-500 hover:text-white'}`}
+        className={`flex flex-col items-center justify-center flex-1 py-2 transition-all ${isAccountActive ? 'text-[#FFA048] scale-110 font-black' : 'text-gray-500 hover:text-white'}`}
         id="tab-btn-account"
       >
         <User className="w-5 h-5 mb-0.5" />
@@ -248,17 +265,36 @@ function DirectoryAppContent() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [searchQueryText, setSearchQueryText] = useState('');
 
+  const isBusiness = currentUser?.role === 'business' || currentUser?.role === 'service_provider';
+  const isAdmin = currentUser?.role === 'admin';
+  const hasBusinessListing = Boolean(
+    currentUser && businesses.some((b) => b.ownerId === currentUser.id)
+  );
+  const isBusinessPortal = isBusiness && hasBusinessListing;
+
   // Apply RTL direction when Arabic is selected
   useEffect(() => {
     document.documentElement.setAttribute('dir', language === 'ar' ? 'rtl' : 'ltr');
     document.documentElement.setAttribute('lang', language);
   }, [language]);
 
-  const handleSandboxLogin = (profile: 'cust' | 'owner' | 'admin') => {
+  // Business/service_provider users: redirect from Search/Saved; registered users also redirect from consumer Home
+  useEffect(() => {
+    if (!isBusiness) return;
+    if (activeTab === 'search' || activeTab === 'saved') {
+      setActiveTab(hasBusinessListing ? 'business' : 'home');
+    } else if (hasBusinessListing && activeTab === 'home') {
+      setActiveTab('business');
+    }
+  }, [isBusiness, hasBusinessListing, activeTab]);
+
+  const handleSandboxLogin = (profile: 'cust' | 'owner' | 'service' | 'admin') => {
     if (profile === 'cust') {
       signIn('manimuhammad000@gmail.com', '+1 770 111 2222', 'customer', 'Mani Muhammad');
     } else if (profile === 'owner') {
-      signIn('owner-alkawthar@gmail.com', '+1 770 123 4567', 'business', 'Hassan Al-Kawthar');
+      signIn('business@shiadirectory.com', '+1 770 123 4567', 'business', 'Hassan Al-Kawthar');
+    } else if (profile === 'service') {
+      signIn('service@shiadirectory.com', '+1 780 987 6543', 'service_provider', 'Noor Electricians (Demo)');
     } else {
       signIn('admin@shiadirectory.com', '+1 780 000 0000', 'admin', 'Abu Murtadha (Admin)');
     }
@@ -284,6 +320,8 @@ function DirectoryAppContent() {
             searchQueryText={searchQueryText}
             setSearchQueryText={setSearchQueryText}
             setIsAuthOpen={setIsAuthOpen}
+            isBusinessPortal={isBusinessPortal}
+            hasBusinessListing={hasBusinessListing}
           />
         </div>
 
@@ -298,8 +336,9 @@ function DirectoryAppContent() {
               setActiveTab={setActiveTab}
               setSearchQueryText={setSearchQueryText}
               t={t as unknown as Record<string, string>}
-              isAdmin={currentUser?.role === 'admin'}
-              isBusiness={currentUser?.role === 'business'}
+              isAdmin={isAdmin}
+              isBusiness={isBusiness}
+              hasBusinessListing={hasBusinessListing}
             />
           </div>
         </div>
@@ -379,6 +418,8 @@ function DirectoryAppContent() {
                 searchQueryText={searchQueryText}
                 setSearchQueryText={setSearchQueryText}
                 setIsAuthOpen={setIsAuthOpen}
+                isBusinessPortal={isBusinessPortal}
+                hasBusinessListing={hasBusinessListing}
               />
             </div>
 
@@ -389,8 +430,9 @@ function DirectoryAppContent() {
                     setActiveTab={setActiveTab}
                     setSearchQueryText={setSearchQueryText}
                     t={t as unknown as Record<string, string>}
-                    isAdmin={currentUser?.role === 'admin'}
-                    isBusiness={currentUser?.role === 'business'}
+                    isAdmin={isAdmin}
+                    isBusiness={isBusiness}
+                    hasBusinessListing={hasBusinessListing}
                   />
             </div>
 
@@ -418,10 +460,11 @@ function DirectoryAppContent() {
           {/* Account Simulation */}
           <div className="p-5 rounded-3xl bg-[#0F0E0C] border border-[#2D2319] space-y-4 animate-fade-in-up" style={{ animationDelay: '0.07s' }}>
             <span className="text-[10px] text-gray-400 font-black uppercase tracking-wider block">⚡ Account Simulation Trigger Board</span>
-            <div className="grid grid-cols-3 gap-2.5">
+            <div className="grid grid-cols-2 gap-2.5">
               {[
-                { profile: 'cust' as const, icon: <User className="w-5 h-5 text-[#FFA048]" />, name: 'Mani Muhammad', sub: 'Customer', tab: 'home', role: 'customer' },
-                { profile: 'owner' as const, icon: <Briefcase className="w-5 h-5 text-amber-500" />, name: 'Hassan Al-Kawthar', sub: 'Business Owner', tab: 'business', role: 'business' },
+                { profile: 'cust' as const, icon: <User className="w-5 h-5 text-green-400" />, name: 'Mani Muhammad', sub: 'Customer', tab: 'home', role: 'customer' },
+                { profile: 'owner' as const, icon: <Briefcase className="w-5 h-5 text-amber-500" />, name: 'Hassan Al-Kawthar', sub: 'Business ($50)', tab: 'business', role: 'business' },
+                { profile: 'service' as const, icon: <Zap className="w-5 h-5 text-blue-400" />, name: 'Noor Electricians', sub: 'Service Provider ($30)', tab: 'business', role: 'service_provider' },
                 { profile: 'admin' as const, icon: <Shield className="w-5 h-5 text-red-400" />, name: 'Abu Murtadha', sub: 'Sys Admin', tab: 'admin', role: 'admin' },
               ].map(({ profile, icon, name, sub, tab, role }) => (
                 <button

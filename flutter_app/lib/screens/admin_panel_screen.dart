@@ -115,7 +115,7 @@ class _BusinessesTab extends StatelessWidget {
                   Text(biz.membershipExpiryDate, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                   if (biz.isVerified) ...[
                     const SizedBox(width: 8),
-                    const Icon(LucideIcons.badgeCheck, size: 14, color: Color(0xFF0F4C3A)),
+                    const Icon(LucideIcons.badge_check, size: 14, color: Color(0xFF0F4C3A)),
                   ],
                 ],
               ),
@@ -247,7 +247,7 @@ class _UserTile extends StatelessWidget {
           Text(name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
           if (isCurrentUser) ...[
             const SizedBox(width: 6),
-            const Icon(LucideIcons.badgeCheck, size: 14, color: Color(0xFF0F4C3A)),
+            const Icon(LucideIcons.badge_check, size: 14, color: Color(0xFF0F4C3A)),
           ],
         ],
       ),

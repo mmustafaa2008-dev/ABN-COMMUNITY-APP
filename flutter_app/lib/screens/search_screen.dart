@@ -147,7 +147,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(LucideIcons.searchX, size: 48, color: colorScheme.onSurface.withOpacity(0.3)),
+                        Icon(LucideIcons.search_x, size: 48, color: colorScheme.onSurface.withOpacity(0.3)),
                         const SizedBox(height: 12),
                         Text(t(lang, 'noResults'), textAlign: TextAlign.center,
                             style: TextStyle(color: colorScheme.onSurface.withOpacity(0.5))),
@@ -257,7 +257,7 @@ class _FilterChip extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 4),
-            Icon(LucideIcons.chevronDown, size: 14, color: active ? Colors.white : Colors.grey),
+            Icon(LucideIcons.chevron_down, size: 14, color: active ? Colors.white : Colors.grey),
           ],
         ),
       ),
@@ -313,7 +313,7 @@ class _SearchResultTile extends StatelessWidget {
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      const Icon(LucideIcons.mapPin, size: 11, color: Color(0xFF0F4C3A)),
+                      const Icon(LucideIcons.map_pin, size: 11, color: Color(0xFF0F4C3A)),
                       const SizedBox(width: 3),
                       Text('${business.city} · ${business.area}',
                           style: const TextStyle(fontSize: 11, color: Color(0xFF0F4C3A))),
@@ -336,7 +336,7 @@ class _SearchResultTile extends StatelessWidget {
                 if (business.isVerified)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
-                    child: Icon(LucideIcons.badgeCheck, size: 16, color: const Color(0xFF0F4C3A)),
+                    child: Icon(LucideIcons.badge_check, size: 16, color: const Color(0xFF0F4C3A)),
                   ),
               ],
             ),

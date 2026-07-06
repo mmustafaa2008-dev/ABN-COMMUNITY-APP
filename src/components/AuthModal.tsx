@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useDirectory } from '../context/DirectoryContext';
 import { TRANSLATIONS } from '../data/translations';
-import { X, Mail, Phone, User, Shield, Briefcase, LogIn, UserPlus } from 'lucide-react';
+import { X, Mail, Phone, User, Shield, Briefcase, LogIn, UserPlus, Zap } from 'lucide-react';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -13,7 +13,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const t = TRANSLATIONS[language];
 
   const [authMode, setAuthMode] = useState<'signin' | 'register'>('signin');
-  const [role, setRole] = useState<'customer' | 'business' | 'admin'>('customer');
+  const [role, setRole] = useState<'customer' | 'business' | 'service_provider' | 'admin'>('customer');
   const [regRole, setRegRole] = useState<'customer' | 'business'>('customer');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -62,11 +62,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     setTimeout(() => { onClose(); resetForm(); }, 1500);
   };
 
-  const handleShortcutLogin = (shortcutRole: 'customer' | 'business' | 'admin') => {
+  const handleShortcutLogin = (shortcutRole: 'customer' | 'business' | 'service_provider' | 'admin') => {
     if (shortcutRole === 'customer') {
       signIn('manimuhammad000@gmail.com', '+1 770 111 2222', 'customer', 'Mani Muhammad');
     } else if (shortcutRole === 'business') {
       signIn('business@shiadirectory.com', '+1 770 123 4567', 'business', 'Hassan Al-Kawthar');
+    } else if (shortcutRole === 'service_provider') {
+      signIn('service@shiadirectory.com', '+1 780 987 6543', 'service_provider', 'Noor Electricians (Demo)');
     } else {
       signIn('admin@shiadirectory.com', '+1 780 000 0000', 'admin', 'Abu Murtadha (Admin)');
     }
@@ -119,11 +121,47 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               <span className="block text-[10px] font-bold text-[#FFA048] mb-3 text-center uppercase tracking-wider">
                 {language === 'en' ? '⚡ Quick Demo Profiles' : '⚡ حسابات تجريبية سريعة'}
               </span>
-              <div className="grid grid-cols-3 gap-2">
+
+              {/* Primary test logins: the two business tiers */}
+              <div className="space-y-2 mb-3">
+                <button
+                  onClick={() => handleShortcutLogin('business')}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-[#FFA048]/10 hover:bg-[#FFA048]/20 border border-[#FFA048]/30 hover:border-[#FFA048]/60 transition-all group"
+                  id="quick-login-business"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-[#FFA048]/20 flex items-center justify-center flex-shrink-0">
+                    <Briefcase className="w-3.5 h-3.5 text-[#FFA048]" />
+                  </div>
+                  <div className="text-left flex-1 min-w-0">
+                    <span className="block text-[11px] font-extrabold text-[#FFA048]">
+                      {language === 'en' ? '⚡ Test Login: Business Owner ($50)' : '⚡ تسجيل تجريبي: صاحب عمل ($50)'}
+                    </span>
+                    <span className="block text-[9px] text-gray-500 truncate">business@shiadirectory.com</span>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => handleShortcutLogin('service_provider')}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-950/40 hover:bg-blue-900/50 border border-blue-700/40 hover:border-blue-500/60 transition-all group"
+                  id="quick-login-service_provider"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+                    <Zap className="w-3.5 h-3.5 text-blue-400" />
+                  </div>
+                  <div className="text-left flex-1 min-w-0">
+                    <span className="block text-[11px] font-extrabold text-blue-300">
+                      {language === 'en' ? '⚡ Test Login: Service Provider ($30)' : '⚡ تسجيل تجريبي: مزوّد خدمة ($30)'}
+                    </span>
+                    <span className="block text-[9px] text-gray-500 truncate">service@shiadirectory.com</span>
+                  </div>
+                </button>
+              </div>
+
+              {/* Secondary quick tiles: Customer and Admin */}
+              <div className="grid grid-cols-2 gap-2">
                 {[
                   { r: 'customer' as const, icon: <User className="w-4 h-4 text-green-400" />, label: language === 'en' ? 'Customer' : 'زبون', sub: 'Mani Muhammad' },
-                  { r: 'business' as const, icon: <Briefcase className="w-4 h-4 text-[#FFA048]" />, label: language === 'en' ? 'Business' : 'صاحب عمل', sub: 'Al-Kawthar' },
-                  { r: 'admin' as const, icon: <Shield className="w-4 h-4 text-red-400" />, label: language === 'en' ? 'Admin' : 'مدير', sub: 'Platform' },
+                  { r: 'admin' as const, icon: <Shield className="w-4 h-4 text-red-400" />, label: language === 'en' ? 'Admin' : 'مدير', sub: 'Platform Admin' },
                 ].map(({ r, icon, label, sub }) => (
                   <button
                     key={r}
@@ -148,8 +186,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             </div>
 
             {/* Role Selector */}
-            <div className="grid grid-cols-3 gap-1 p-1 bg-[#0F0E0C] rounded-2xl mb-4 border border-[#2D2319]" id="auth-role-selector">
-              {(['customer', 'business', 'admin'] as const).map((r) => (
+            <div className="grid grid-cols-2 gap-1 p-1 bg-[#0F0E0C] rounded-2xl mb-4 border border-[#2D2319]" id="auth-role-selector">
+              {([
+                { r: 'customer' as const, label: 'Customer' },
+                { r: 'business' as const, label: 'Business' },
+                { r: 'service_provider' as const, label: 'Service Pro' },
+                { r: 'admin' as const, label: 'Admin' },
+              ]).map(({ r, label }) => (
                 <button
                   key={r}
                   type="button"
@@ -157,7 +200,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   className={`py-2 rounded-xl text-[10px] font-bold uppercase transition-all ${role === r ? 'bg-[#FFA048] text-black shadow' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
                   id={`auth-role-btn-${r}`}
                 >
-                  {r}
+                  {label}
                 </button>
               ))}
             </div>

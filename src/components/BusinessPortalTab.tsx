@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useDirectory } from '../context/DirectoryContext';
 import { TRANSLATIONS } from '../data/translations';
 import {
@@ -20,15 +20,20 @@ import {
   CheckCircle,
   Lock,
   Edit,
-  ArrowRight
+  ArrowRight,
+  ArrowLeft,
+  Zap,
+  Camera,
+  ImageIcon,
 } from 'lucide-react';
 import { Business, PaymentRecord } from '../types';
 
 interface BusinessPortalTabProps {
   onOpenAuth: () => void;
+  onBack?: () => void;
 }
 
-export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth }) => {
+export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth, onBack }) => {
   const {
     language,
     currentUser,
@@ -39,6 +44,9 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
     updateBusiness,
     addPayment
   } = useDirectory();
+
+  // Derive plan price by role
+  const planAmount = currentUser?.role === 'service_provider' ? 30 : 50;
   const t = TRANSLATIONS[language];
 
   // Forms Toggle / Tab
@@ -67,8 +75,22 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
   const [regHoursAr, setRegHoursAr] = useState('8:00 صباحاً - 10:00 مساءً');
   const [regLogo, setRegLogo] = useState('');
   const [regCover, setRegCover] = useState('');
+  const [regImagePreview, setRegImagePreview] = useState('');
   const [regSuccess, setRegSuccess] = useState('');
   const [regError, setRegError] = useState('');
+  const regFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleRegFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result as string;
+      setRegImagePreview(base64);
+      setRegLogo(base64);
+    };
+    reader.readAsDataURL(file);
+  };
 
   // ── Bug #3 Fix: Edit form state — initialized empty, populated via useEffect ──
   const [editName, setEditName] = useState('');
@@ -78,7 +100,21 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
   const [editHours, setEditHours] = useState('');
   const [editLogo, setEditLogo] = useState('');
   const [editCover, setEditCover] = useState('');
+  const [editImagePreview, setEditImagePreview] = useState('');
   const [editSuccess, setEditSuccess] = useState('');
+  const editFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleEditFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result as string;
+      setEditImagePreview(base64);
+      setEditLogo(base64);
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Populate edit fields whenever myBusiness changes (e.g. after sign-in)
   React.useEffect(() => {
@@ -89,6 +125,7 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
       setEditWhatsapp(myBusiness.whatsapp);
       setEditHours(myBusiness.workingHours[language] || myBusiness.workingHours.en);
       setEditLogo(myBusiness.logoUrl);
+      setEditImagePreview(myBusiness.logoUrl);
       setEditCover(myBusiness.coverUrl);
     }
   }, [myBusiness?.id, language]);
@@ -148,8 +185,8 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
         <h3 className="text-lg font-black text-white">{t.businessPortal}</h3>
         <p className="text-xs text-gray-400 mt-2 max-w-sm mx-auto leading-relaxed">
           {language === 'en'
-            ? 'Sign in with your Business Member account to list your shop, update service operations, or manage your $50/month membership fee.'
-            : 'سجل الدخول بحساب شريك الدليل لتسجيل عملك وإدارته وتفعيل اشتراكك الشهري بقيمة 50$/شهرياً.'}
+            ? 'Sign in with your Business or Service Provider account to list your shop, update service operations, or manage your monthly membership.'
+            : 'سجل الدخول بحساب شريك الدليل لتسجيل عملك وإدارته وتفعيل اشتراكك الشهري.'}
         </p>
         <button
           onClick={onOpenAuth}
@@ -339,7 +376,7 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
       language === 'en' ? `💳 Resolving card network brand... [${brand.toUpperCase()} Network Resolved]` : `💳 التعرف على شبكة البطاقة... [تم تحديد شبكة ${brand.toUpperCase()}]`,
       language === 'en' ? '🌐 Handshaking with secure online gateway... [HTTPS PORT 443 CONNECTED]' : '🌐 الربط بالمنفذ البنكي الآمن... [اتصال HTTPS مشفر وجاري]',
       language === 'en' ? '🔒 Running anti-fraud validation & 3D-Secure state... [ACCOUNTS COMMITTED & SUFFICIENT FUNDS]' : '🔒 تدقيق مكافحة الاحتيال وحالة الرصيد المالي... [البطاقة نشطة وبها رصيد كافي]',
-      language === 'en' ? '✅ Finalizing transaction auth token...' : '✅ يجري إصدار رقم التوثيق وتحويل الـ 50$...'
+      language === 'en' ? '✅ Finalizing transaction auth token...' : `✅ يجري إصدار رقم التوثيق وتحويل الـ ${planAmount}$...`
     ];
 
     let currentStep = 0;
@@ -354,7 +391,7 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
         const payRec: PaymentRecord = {
           id: `pay-${Date.now()}`,
           businessId: myBusiness.id,
-          amount: 50,
+          amount: planAmount,
           date: new Date().toISOString().split('T')[0],
           status: 'success',
           refNo: `TXN-${Math.floor(Math.random() * 9000000 + 1000000)}`
@@ -402,7 +439,35 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
 
   return (
     <div className="space-y-6" id="portal-tab-container">
-      
+
+      {/* Back navigation header — only rendered when accessed as a sub-page */}
+      {onBack && (
+        <div className="flex items-center gap-3 pb-3 border-b border-[#2D2319]">
+          <button
+            onClick={onBack}
+            className="p-2 rounded-full bg-[#191613] hover:bg-[#2D251C] border border-[#2D2319] transition-colors"
+            aria-label="Back"
+          >
+            <ArrowLeft className="w-4 h-4 text-[#FFA048]" />
+          </button>
+          <div>
+            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+              {currentUser?.role === 'service_provider'
+                ? (language === 'en' ? 'Service Provider Portal' : 'بوابة مزوّد الخدمة')
+                : (language === 'en' ? 'Business Portal' : 'بوابة صاحب العمل')}
+            </span>
+            {myBusiness && (
+              <h2 className="text-base font-extrabold text-[#F4E3D7] leading-tight flex items-center gap-2">
+                {currentUser?.role === 'service_provider'
+                  ? <Zap className="w-4 h-4 text-blue-400" />
+                  : <Briefcase className="w-4 h-4 text-[#FFA048]" />}
+                {myBusiness.name}
+              </h2>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* NO REGISTERED BUSINESS: DISPLAY APPLICANT FORM */}
       {!myBusiness ? (
         !registrationType ? (
@@ -474,7 +539,9 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
                 {registrationType === 'business' ? t.registerBusiness : (language === 'en' ? 'Register Service' : 'سجل كخدمة')}
               </h2>
               <p className="text-[10px] text-gray-500 font-medium">
-                {language === 'en' ? `Reach Shia community customers directly for $${registrationType === 'business' ? '50' : '30'}/month.` : `انضم لدليل أعمال المجتمع وتواصل مع آلاف الزبائن بقيمة ${registrationType === 'business' ? '50$' : '30$'} شهرياً.`}
+                {language === 'en'
+            ? `Reach Shia community customers directly for $${registrationType === 'business' ? '50' : '30'}/month.`
+            : `انضم لدليل أعمال المجتمع وتواصل مع آلاف الزبائن بقيمة ${registrationType === 'business' ? '50$' : '30$'} شهرياً.`}
               </p>
             </div>
           </div>
@@ -482,6 +549,47 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
           <form onSubmit={handleRegisterSubmit} className="space-y-4 p-5 rounded-3xl bg-[#13110E] border border-[#2D2319]" id="biz-reg-form">
             {regSuccess && <p className="p-3 bg-green-950/45 border border-green-900 text-green-300 text-xs rounded-xl">{regSuccess}</p>}
             {regError && <p className="p-3 bg-red-950/45 border border-red-900 text-red-300 text-xs rounded-xl">{regError}</p>}
+
+            {/* ── Image Picker ── */}
+            <div>
+              <label className="block text-xs text-gray-400 mb-2">
+                {language === 'en' ? 'Business / Service Logo Image' : 'صورة الشعار'}
+              </label>
+              <div className="flex items-start gap-3">
+                <div className="w-20 h-20 rounded-xl bg-[#0F0E0C] border border-[#2D2319] overflow-hidden flex-shrink-0 flex items-center justify-center">
+                  {(regImagePreview || regLogo) ? (
+                    <img src={regImagePreview || regLogo} alt="Preview" className="w-full h-full object-cover" />
+                  ) : (
+                    <ImageIcon className="w-7 h-7 text-gray-600" />
+                  )}
+                </div>
+                <div className="flex-1 space-y-2">
+                  <input
+                    type="file"
+                    ref={regFileInputRef}
+                    onChange={handleRegFileChange}
+                    accept="image/*"
+                    className="hidden"
+                    id="reg-file-input-logo"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => regFileInputRef.current?.click()}
+                    className="w-full py-2 rounded-xl bg-[#191613] border border-[#2D2319] text-xs text-gray-300 hover:text-white hover:border-[#FFA048]/40 transition-all flex items-center justify-center gap-2"
+                  >
+                    <Camera className="w-3.5 h-3.5 text-[#FFA048]" />
+                    {language === 'en' ? '📸 Upload Photo' : '📸 رفع صورة'}
+                  </button>
+                  <input
+                    type="url"
+                    value={regLogo}
+                    onChange={(e) => { setRegLogo(e.target.value); setRegImagePreview(e.target.value); }}
+                    placeholder={language === 'en' ? 'or paste image URL...' : 'أو الصق رابط الصورة...'}
+                    className="w-full p-2 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white placeholder-gray-600 outline-none focus:border-[#FFA048]/40"
+                  />
+                </div>
+              </div>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -624,27 +732,15 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">{t.logoUrl}</label>
-                <input
-                  type="text"
-                  placeholder="https://..."
-                  value={regLogo}
-                  onChange={(e) => setRegLogo(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">{t.coverUrl}</label>
-                <input
-                  type="text"
-                  placeholder="https://..."
-                  value={regCover}
-                  onChange={(e) => setRegCover(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white"
-                />
-              </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">{t.coverUrl}</label>
+              <input
+                type="text"
+                placeholder="https://..."
+                value={regCover}
+                onChange={(e) => setRegCover(e.target.value)}
+                className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white"
+              />
             </div>
 
             <button
@@ -778,7 +874,7 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
                     </p>
                     <p className="text-[10px] text-gray-500">
                       {language === 'en'
-                        ? 'Under community regulations, your listing has disappeared from customer search until the monthly update of $50/month is settled.'
+                        ? `Under community regulations, your listing has disappeared from customer search until the monthly update of $${planAmount}/month is settled.`
                         : 'نزولاً عند شروط الدليل، تم إخفاء عملك مؤقتاً من القائمة العامة وسيتم تفعيله تلقائياً للزبائن فور إتمام السداد.'}
                     </p>
                   </div>
@@ -828,17 +924,18 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
           {/* DYNAMIC PORTAL SUBSECTION SWITCHER: EDIT DETAILS FORM */}
           {activePortalTab === 'edit' && (
             <div className="p-5 rounded-3xl bg-[#13110E] border border-[#2D2319] space-y-4 animate-scale-up" id="subview-edit-profile">
-              <div className="flex items-center justify-between pb-2 border-b border-[#2D2319]/60">
+              <div className="flex items-center gap-3 pb-2 border-b border-[#2D2319]/60">
+                <button
+                  onClick={() => setActivePortalTab('dash')}
+                  className="p-1.5 rounded-full bg-[#191613] hover:bg-[#2D251C] border border-[#2D2319] transition-colors"
+                  id="btn-edit-cancel"
+                  aria-label="Back to dashboard"
+                >
+                  <ArrowLeft className="w-4 h-4 text-[#FFA048]" />
+                </button>
                 <h3 className="text-xs font-bold uppercase tracking-wider text-[#FFA048]">
                   {language === 'en' ? 'Profile Management' : 'إدارة بيانات صفحتك'}
                 </h3>
-                <button
-                  onClick={() => setActivePortalTab('dash')}
-                  className="text-xs text-gray-500 hover:text-white"
-                  id="btn-edit-cancel"
-                >
-                  {language === 'en' ? 'Cancel' : 'إلغاء'}
-                </button>
               </div>
 
               {editSuccess && <p className="p-3 bg-green-950 text-green-300 text-xs rounded-xl">{editSuccess}</p>}
@@ -889,25 +986,55 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs text-gray-450 mb-1">{t.logoUrl}</label>
-                    <input
-                      type="text"
-                      value={editLogo}
-                      onChange={(e) => setEditLogo(e.target.value)}
-                      className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-[#F4E3D7]"
-                    />
+                {/* ── Image Picker (Edit) ── */}
+                <div>
+                  <label className="block text-xs text-gray-400 mb-2">
+                    {language === 'en' ? 'Business / Service Logo Image' : 'صورة الشعار'}
+                  </label>
+                  <div className="flex items-start gap-3">
+                    <div className="w-20 h-20 rounded-xl bg-[#0F0E0C] border border-[#2D2319] overflow-hidden flex-shrink-0 flex items-center justify-center">
+                      {(editImagePreview || editLogo) ? (
+                        <img src={editImagePreview || editLogo} alt="Preview" className="w-full h-full object-cover" />
+                      ) : (
+                        <ImageIcon className="w-7 h-7 text-gray-600" />
+                      )}
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <input
+                        type="file"
+                        ref={editFileInputRef}
+                        onChange={handleEditFileChange}
+                        accept="image/*"
+                        className="hidden"
+                        id="edit-portal-file-input-logo"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => editFileInputRef.current?.click()}
+                        className="w-full py-2 rounded-xl bg-[#191613] border border-[#2D2319] text-xs text-gray-300 hover:text-white hover:border-[#FFA048]/40 transition-all flex items-center justify-center gap-2"
+                      >
+                        <Camera className="w-3.5 h-3.5 text-[#FFA048]" />
+                        {language === 'en' ? '📸 Change Photo' : '📸 تغيير الصورة'}
+                      </button>
+                      <input
+                        type="url"
+                        value={editLogo}
+                        onChange={(e) => { setEditLogo(e.target.value); setEditImagePreview(e.target.value); }}
+                        placeholder={language === 'en' ? 'or paste image URL...' : 'أو الصق رابط الصورة...'}
+                        className="w-full p-2 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-[#F4E3D7] placeholder-gray-600 outline-none focus:border-[#FFA048]/40"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-xs text-gray-450 mb-1">{t.coverUrl}</label>
-                    <input
-                      type="text"
-                      value={editCover}
-                      onChange={(e) => setEditCover(e.target.value)}
-                      className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-[#F4E3D7]"
-                    />
-                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-gray-450 mb-1">{t.coverUrl}</label>
+                  <input
+                    type="text"
+                    value={editCover}
+                    onChange={(e) => setEditCover(e.target.value)}
+                    className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-[#F4E3D7]"
+                  />
                 </div>
 
                 <div>
@@ -935,17 +1062,18 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
           {/* DYNAMIC PORTAL SUBSECTION SWITCHER: RENEW SUBSCRIPTION FORM */}
           {activePortalTab === 'pay' && (
             <div className="p-5 rounded-3xl bg-[#13110E] border border-[#2D2319] space-y-4 animate-scale-up" id="subview-renew-payment">
-              <div className="flex items-center justify-between pb-2 border-b border-[#2D2319]/60">
+              <div className="flex items-center gap-3 pb-2 border-b border-[#2D2319]/60">
+                <button
+                  onClick={() => setActivePortalTab('dash')}
+                  className="p-1.5 rounded-full bg-[#191613] hover:bg-[#2D251C] border border-[#2D2319] transition-colors"
+                  id="btn-pay-cancel"
+                  aria-label="Back to dashboard"
+                >
+                  <ArrowLeft className="w-4 h-4 text-[#FFA048]" />
+                </button>
                 <h3 className="text-xs font-bold uppercase tracking-wider text-[#FFA048]">
                   {t.paymentGateway}
                 </h3>
-                <button
-                  onClick={() => setActivePortalTab('dash')}
-                  className="text-xs text-gray-500 hover:text-white"
-                  id="btn-pay-cancel"
-                >
-                  {language === 'en' ? 'Back' : 'رجوع'}
-                </button>
               </div>
 
               <div className="p-4 rounded-2xl bg-[#0F0E0C] border border-[#2D2319] space-y-2">
@@ -953,7 +1081,7 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
                 <p className="text-[11px] text-gray-400 leading-relaxed">
                   {t.renewDescription}
                 </p>
-                <span className="block mt-2 text-sm font-black text-[#FFA048]">$50.00 / month</span>
+                <span className="block mt-2 text-sm font-black text-[#FFA048]">${planAmount}.00 / month</span>
               </div>
 
               {/* ADMIN ACCOUNT & CARDS HELPER TIP */}

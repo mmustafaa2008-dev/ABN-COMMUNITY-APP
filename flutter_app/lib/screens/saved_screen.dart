@@ -101,7 +101,7 @@ class SavedScreen extends StatelessWidget {
                               const SizedBox(height: 5),
                               Row(
                                 children: [
-                                  const Icon(LucideIcons.mapPin, size: 12, color: Color(0xFF0F4C3A)),
+                                  const Icon(LucideIcons.map_pin, size: 12, color: Color(0xFF0F4C3A)),
                                   const SizedBox(width: 4),
                                   Text(
                                     '${biz.city} · ${biz.area}',

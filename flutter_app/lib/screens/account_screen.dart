@@ -4,6 +4,7 @@ import 'package:flutter_lucide/flutter_lucide.dart';
 import '../providers/directory_provider.dart';
 import '../models/models.dart';
 import '../data/translations.dart';
+import 'edit_business_profile_screen.dart';
 
 class AccountScreen extends StatelessWidget {
   const AccountScreen({super.key});
@@ -13,7 +14,6 @@ class AccountScreen extends StatelessWidget {
     final provider = context.watch<DirectoryProvider>();
     final lang = provider.language;
     final user = provider.currentUser;
-    final colorScheme = Theme.of(context).colorScheme;
 
     if (user == null) {
       return _GuestAccountView(lang: lang);
@@ -23,6 +23,15 @@ class AccountScreen extends StatelessWidget {
         .where((n) => n.receiverRole == 'all' || n.receiverRole == user.role.name)
         .toList();
     final unreadCount = myNotifications.where((n) => !n.isRead).length;
+    final myBusiness = user.role == UserRole.business
+        ? provider.businesses.where((b) => b.ownerId == user.id).firstOrNull
+        : null;
+    final categoryName = myBusiness != null
+        ? provider.categories
+            .where((c) => c.id == myBusiness.categoryId)
+            .map((c) => c.name[lang] ?? c.name['en'] ?? '')
+            .firstOrNull
+        : null;
 
     return Scaffold(
       appBar: AppBar(
@@ -57,54 +66,103 @@ class AccountScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          // Profile card
           Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF0F4C3A), Color(0xFF1a7a5e)],
-              ),
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey.withOpacity(0.2)),
             ),
             child: Row(
               children: [
                 CircleAvatar(
-                  radius: 30,
-                  backgroundColor: Colors.white24,
+                  radius: 24,
+                  backgroundColor: const Color(0xFF0F4C3A).withOpacity(0.15),
                   child: Text(
                     user.name.isNotEmpty ? user.name[0].toUpperCase() : 'U',
-                    style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                    style: const TextStyle(color: Color(0xFF0F4C3A), fontWeight: FontWeight.bold),
                   ),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(user.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+                      Text(user.email, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                       const SizedBox(height: 2),
-                      Text(user.email, style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                      const SizedBox(height: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: Colors.white24,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          user.role.name.toUpperCase(),
-                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                        ),
+                      Text(
+                        'Signed in (${user.role.name})',
+                        style: TextStyle(fontSize: 12, color: Colors.green[600], fontWeight: FontWeight.w600),
                       ),
                     ],
                   ),
                 ),
+                TextButton(
+                  onPressed: () => provider.signOut(),
+                  child: Text(t(lang, 'signOut'), style: const TextStyle(color: Color(0xFF0F4C3A), fontWeight: FontWeight.bold)),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
 
-          // Language selection
+          if (myBusiness != null) ...[
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.grey.withOpacity(0.2)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(LucideIcons.briefcase, size: 18, color: Color(0xFF0F4C3A)),
+                      const SizedBox(width: 8),
+                      Text(t(lang, 'businessProfileMetadata'),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _MetadataRow(label: t(lang, 'businessName'), value: myBusiness.name),
+                  _MetadataRow(
+                    label: t(lang, 'subscriptionStatus'),
+                    value: myBusiness.status == BusinessStatus.active
+                        ? '${t(lang, 'businessPlan')} (${t(lang, 'expiresOn')} ${myBusiness.membershipExpiryDate})'
+                        : t(lang, 'suspended'),
+                  ),
+                  _MetadataRow(label: t(lang, 'referenceId'), value: myBusiness.id),
+                  _MetadataRow(
+                    label: t(lang, 'selectCategory'),
+                    value: categoryName ?? myBusiness.subcategory[lang] ?? myBusiness.subcategory['en'] ?? '',
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            ListTile(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => EditBusinessProfileScreen(business: myBusiness),
+                  ),
+                );
+              },
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: BorderSide(color: Colors.grey.withOpacity(0.2)),
+              ),
+              tileColor: Theme.of(context).colorScheme.surface,
+              leading: const Text('📝', style: TextStyle(fontSize: 20)),
+              title: Text(t(lang, 'editBusinessProfile'), style: const TextStyle(fontWeight: FontWeight.w600)),
+              trailing: const Icon(LucideIcons.chevron_right, size: 18),
+            ),
+            const SizedBox(height: 8),
+          ],
+
           _SettingsCard(
             title: t(lang, 'languageSelection'),
             child: Column(
@@ -130,7 +188,6 @@ class AccountScreen extends StatelessWidget {
           ),
           const SizedBox(height: 12),
 
-          // Theme selection
           _SettingsCard(
             title: 'Theme',
             child: Column(
@@ -162,23 +219,62 @@ class AccountScreen extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
 
-          // Sign out
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () => provider.signOut(),
-              icon: const Icon(LucideIcons.logOut, color: Colors.red),
-              label: Text(t(lang, 'signOut'), style: const TextStyle(color: Colors.red)),
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Colors.red),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
+          _SettingsCard(
+            title: t(lang, 'notifications'),
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(LucideIcons.bell, color: Color(0xFF0F4C3A)),
+              title: Text(t(lang, 'notifications')),
+              trailing: unreadCount > 0
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(12)),
+                      child: Text('$unreadCount NEW', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                    )
+                  : const Icon(LucideIcons.chevron_right),
+              onTap: () => _showNotificationsSheet(context, provider, myNotifications, lang),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          _SettingsCard(
+            title: t(lang, 'privacy'),
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(LucideIcons.lock, color: Color(0xFF0F4C3A)),
+              title: Text(t(lang, 'privacy')),
+              trailing: const Icon(LucideIcons.chevron_right),
+              onTap: () => _showPrivacySheet(context, lang),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showPrivacySheet(BuildContext context, String lang) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(t(lang, 'privacy'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 12),
+            Text(
+              'The Shia Community Business Directory operates as an index to discover verified local businesses. '
+              'All communication happens outside the platform via direct calling or WhatsApp.',
+              style: TextStyle(fontSize: 13, color: Colors.grey[600], height: 1.5),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
       ),
     );
   }
@@ -219,7 +315,7 @@ class AccountScreen extends StatelessWidget {
                       itemBuilder: (_, i) {
                         final n = notifications[i];
                         return ListTile(
-                          leading: Icon(n.isRead ? LucideIcons.bell : LucideIcons.bellRing,
+                          leading: Icon(n.isRead ? LucideIcons.bell : LucideIcons.bell_ring,
                               color: n.isRead ? Colors.grey : const Color(0xFF0F4C3A)),
                           title: Text(n.title, style: TextStyle(fontWeight: n.isRead ? FontWeight.normal : FontWeight.bold)),
                           subtitle: Text(n.message, maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -230,6 +326,32 @@ class AccountScreen extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _MetadataRow extends StatelessWidget {
+  final String label;
+  final String value;
+  const _MetadataRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 2,
+            child: Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+          ),
+        ],
       ),
     );
   }
@@ -253,7 +375,7 @@ class _GuestAccountView extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(LucideIcons.userCircle, size: 72, color: Color(0xFF0F4C3A)),
+              const Icon(Icons.account_circle, size: 72, color: Color(0xFF0F4C3A)),
               const SizedBox(height: 16),
               Text(t(lang, 'guestUser'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
