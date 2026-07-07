@@ -316,8 +316,8 @@ export const HomeTab: React.FC<HomeTabProps> = ({
       
       {/* Top Navigation Banner & Search */}
       <div className="space-y-4 animate-fade-in-up" id="home-top-section">
-        {/* Header Context */}
-        <div className="pt-2">
+        {/* Header — premium orange wordmark */}
+        <div className="pt-1 pb-0.5">
           <h1 className="text-3xl font-black text-[#FFA048] tracking-widest uppercase">ABN</h1>
         </div>
 

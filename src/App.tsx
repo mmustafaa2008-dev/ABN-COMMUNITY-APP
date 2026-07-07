@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { DirectoryProvider, useDirectory } from './context/DirectoryContext';
 import { TRANSLATIONS } from './data/translations';
 import { AuthModal } from './components/AuthModal';
+import { SplashScreen } from './screens/SplashScreen';
 import { BusinessDetailsModal } from './components/BusinessDetailsModal';
 import { HomeTab } from './components/HomeTab';
 import { SearchTab } from './components/SearchTab';
@@ -282,6 +283,18 @@ function DirectoryAppContent() {
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [searchQueryText, setSearchQueryText] = useState('');
+  const [showSplash, setShowSplash] = useState(true);
+  const [splashFading, setSplashFading] = useState(false);
+
+  // Welcome splash — mirrors native Capacitor splash duration
+  useEffect(() => {
+    const fadeTimer = setTimeout(() => setSplashFading(true), 1200);
+    const hideTimer = setTimeout(() => setShowSplash(false), 1700);
+    return () => {
+      clearTimeout(fadeTimer);
+      clearTimeout(hideTimer);
+    };
+  }, []);
 
   const isBusiness = currentUser?.role === 'business' || currentUser?.role === 'service_provider';
   const isAdmin = currentUser?.role === 'admin';
@@ -335,9 +348,13 @@ function DirectoryAppContent() {
   const verifiedActiveCount = businesses.filter((b) => b.isVerified && b.status === 'active').length;
   const expiredCount = businesses.filter((b) => b.status === 'suspended').length;
 
+  const splashOverlay = showSplash ? <SplashScreen fading={splashFading} /> : null;
+
   // ── MOBILE LAYOUT: Full-screen native app experience ──────────
   if (isMobile) {
     return (
+      <>
+      {splashOverlay}
       <div
         className="fixed inset-0 flex flex-col bg-gradient-to-b from-[#191512] to-[#0A0705] text-[#F4E3D7]"
         id="app-root-mobile"
@@ -384,23 +401,23 @@ function DirectoryAppContent() {
         )}
         <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
       </div>
+      </>
     );
   }
 
   // ── DESKTOP LAYOUT: Simulator sandbox (browser only) ─────────
   return (
+    <>
+    {splashOverlay}
     <div className="min-h-screen bg-[#0A0705] text-[#F4E3D7] font-sans flex flex-col antialiased" id="app-root">
 
       {/* Top Navbar */}
       <header className="border-b border-[#2D2319] bg-[#0A0705]/80 backdrop-blur-md p-4 sticky top-0 z-40 shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#13110E] border border-[#2D2319] overflow-hidden flex items-center justify-center shadow-inner animate-pulse-soft">
-              <img src="/logo.png" alt="Kawthar Logo" className="w-full h-full object-cover" />
-            </div>
-            <div>
-              <h1 className="text-sm font-black text-white uppercase tracking-wider">{t.appName}</h1>
-              <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">{t.tagline}</p>
+            <h1 className="text-2xl font-black text-[#FFA048] tracking-widest uppercase">ABN</h1>
+            <div className="hidden sm:block min-w-0">
+              <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest truncate">{t.tagline}</p>
             </div>
           </div>
           <div className="flex rounded-md overflow-hidden border border-[#2D2319] bg-black/40">
@@ -555,6 +572,7 @@ function DirectoryAppContent() {
         <p>© 2026 Ahle Bait Network (ABN). All rights reserved.</p>
       </footer>
     </div>
+    </>
   );
 }
 

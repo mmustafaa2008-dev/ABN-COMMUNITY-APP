@@ -8,7 +8,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "assets:generate": "npx @capacitor/assets generate --iconBackgroundColor \"#000000\" --iconBackgroundColorDark \"#000000\" --splashBackgroundColor \"#0A0705\" --splashBackgroundColorDark \"#0A0705\" --logoSplashScale 0.35",
+    "assets:android": "npm run assets:generate -- --android",
+    "assets:ios": "npm run assets:generate -- --ios"
   },
   "dependencies": {
     "@capacitor/android": "^6.2.1",

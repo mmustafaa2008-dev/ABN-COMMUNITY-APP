@@ -5,6 +5,7 @@ import {
   X, Mail, Phone, User, Shield, Briefcase,
   LogIn, UserPlus, Zap, Lock, Loader2,
 } from 'lucide-react';
+import { AbnLogo } from './AbnLogo';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -136,6 +137,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         <button onClick={onClose} className="absolute top-4 right-4 p-2 rounded-full hover:bg-[#201B15] text-[#FFA048] transition-colors" aria-label="Close">
           <X className="w-5 h-5" />
         </button>
+
+        {/* Brand mark */}
+        <div className="flex justify-center pt-1 pb-2">
+          <AbnLogo size="hero" />
+        </div>
 
         {/* Mode tabs */}
         <div className="flex gap-1 p-1 bg-[#0F0E0C] rounded-2xl mb-5 border border-[#2D2319]">
