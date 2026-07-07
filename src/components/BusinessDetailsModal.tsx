@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { Business, Review } from '../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Business } from '../types';
 import { useDirectory } from '../context/DirectoryContext';
 import { TRANSLATIONS } from '../data/translations';
 import {
@@ -51,15 +51,24 @@ function isBusinessOpenNow(workingHours: string): boolean | null {
 }
 
 export const BusinessDetailsModal: React.FC<BusinessDetailsModalProps> = ({ business, onClose }) => {
-  const { language, reviews, addReview, currentUser, favorites, toggleFavorite } = useDirectory();
+  const {
+    language, reviews, currentUser, favorites, toggleFavorite,
+    fetchReviewsForBusiness, submitReview,
+  } = useDirectory();
   const t = TRANSLATIONS[language];
 
   const isOpen = useMemo(() => isBusinessOpenNow(business.workingHours.en), [business.workingHours.en]);
 
   const [rating, setRating] = useState(5);
+  const [hoverRating, setHoverRating] = useState(0);
   const [comment, setComment] = useState('');
   const [reviewError, setReviewError] = useState('');
   const [reviewSuccess, setReviewSuccess] = useState('');
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+
+  useEffect(() => {
+    fetchReviewsForBusiness(business.id);
+  }, [business.id, fetchReviewsForBusiness]);
 
   // Local clicks counter to simulate offline referral tracking
   const [whatsappClicks, setWhatsappClicks] = useState(34);
@@ -70,29 +79,27 @@ export const BusinessDetailsModal: React.FC<BusinessDetailsModalProps> = ({ busi
 
   const isFav = favorites.includes(business.id);
 
-  const handleCreateReview = (e: React.FormEvent) => {
+  const handleCreateReview = async (e: React.FormEvent) => {
     e.preventDefault();
+    setReviewError('');
+    setReviewSuccess('');
+
     if (!currentUser) {
       setReviewError(language === 'en' ? 'You must be signed in to submit a review!' : 'يجب تسجيل الدخول لإضافة تقييم!');
       return;
     }
-    if (!comment.trim()) {
-      setReviewError(language === 'en' ? 'Please share details in your comment.' : 'يرجى كتابة تعليقك أولاً.');
+
+    setIsSubmittingReview(true);
+    const result = await submitReview(business.id, rating, comment);
+    setIsSubmittingReview(false);
+
+    if (!result.success) {
+      setReviewError(result.error || (language === 'en' ? 'Could not submit review.' : 'تعذر إرسال التقييم.'));
       return;
     }
 
-    const newReview: Review = {
-      id: `rev-${Date.now()}`,
-      businessId: business.id,
-      userName: currentUser.name || currentUser.email.split('@')[0],
-      rating,
-      comment,
-      date: new Date().toISOString().split('T')[0]
-    };
-
-    addReview(newReview);
     setComment('');
-    setReviewError('');
+    setRating(5);
     setReviewSuccess(language === 'en' ? 'Review posted! Jazakumullah Khayran.' : 'تم نشر المراجعة! جزاكم الله خيراً.');
     setTimeout(() => setReviewSuccess(''), 4000);
   };
@@ -251,6 +258,91 @@ export const BusinessDetailsModal: React.FC<BusinessDetailsModalProps> = ({ busi
               </div>
             </div>
 
+            {/* ── Rate This Business (interactive 5-star + POST /api/reviews) ── */}
+            <div className="p-5 rounded-2xl bg-[#13110E] border border-[#FFA048]/25 space-y-4" id="details-rate-business">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-extrabold tracking-wider text-[#FFA048]">
+                  {language === 'en' ? '⭐ Rate This Business' : '⭐ قيّم هذا النشاط'}
+                </h3>
+                <span className="text-[10px] text-gray-500">
+                  {business.rating} ★ · {businessReviews.length} {language === 'en' ? 'reviews' : 'تقييم'}
+                </span>
+              </div>
+
+              {!currentUser && (
+                <p className="text-xs text-gray-400 bg-[#0F0E0C] border border-[#2D2319] rounded-xl p-3">
+                  {language === 'en'
+                    ? 'Please sign in to leave a star rating and review.'
+                    : 'يرجى تسجيل الدخول لترك تقييم ومراجعة.'}
+                </p>
+              )}
+
+              {reviewError && (
+                <p className="text-red-400 text-xs bg-red-950/30 border border-red-900/50 rounded-xl p-2.5">{reviewError}</p>
+              )}
+              {reviewSuccess && (
+                <p className="text-green-400 text-xs bg-green-950/30 border border-green-900/50 rounded-xl p-2.5">{reviewSuccess}</p>
+              )}
+
+              <form onSubmit={handleCreateReview} className="space-y-4">
+                <div>
+                  <p className="text-xs text-gray-400 mb-2">{t.ratingLabel}</p>
+                  <div className="flex items-center gap-2" onMouseLeave={() => setHoverRating(0)}>
+                    {[1, 2, 3, 4, 5].map((star) => {
+                      const active = star <= (hoverRating || rating);
+                      return (
+                        <button
+                          key={star}
+                          type="button"
+                          disabled={!currentUser || isSubmittingReview}
+                          onMouseEnter={() => setHoverRating(star)}
+                          onClick={() => setRating(star)}
+                          className="p-1 rounded-lg focus:outline-none disabled:opacity-40 transition-transform hover:scale-110"
+                          aria-label={`${star} star${star > 1 ? 's' : ''}`}
+                        >
+                          <Star
+                            className={`w-8 h-8 transition-colors ${
+                              active ? 'text-[#FFA048] fill-[#FFA048]' : 'text-gray-700 hover:text-gray-500'
+                            }`}
+                          />
+                        </button>
+                      );
+                    })}
+                    <span className="ml-2 text-sm font-extrabold text-[#FFA048]">
+                      {hoverRating || rating}/5
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1.5" htmlFor="details-comment-input">
+                    {language === 'en' ? 'Your review (optional)' : 'مراجعتك (اختياري)'}
+                  </label>
+                  <textarea
+                    id="details-comment-input"
+                    rows={3}
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                    disabled={!currentUser || isSubmittingReview}
+                    placeholder={language === 'en' ? 'Share your experience with this business…' : 'شارك تجربتك مع هذا النشاط…'}
+                    className="w-full p-3 rounded-xl bg-[#0F0E0C] border border-[#2D2319] focus:border-[#FFA048] text-xs outline-none text-[#F4E3D7] transition-all disabled:opacity-50 resize-none"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={!currentUser || isSubmittingReview}
+                  className="w-full py-3 rounded-xl bg-[#FFA048] hover:bg-opacity-95 text-black font-extrabold text-xs transition-all shadow-md disabled:opacity-40 flex items-center justify-center gap-2"
+                  id="details-btn-submit-rating"
+                >
+                  <Send className="w-4 h-4" />
+                  {isSubmittingReview
+                    ? (language === 'en' ? 'Submitting…' : 'جارٍ الإرسال…')
+                    : (language === 'en' ? 'Submit Rating' : 'إرسال التقييم')}
+                </button>
+              </form>
+            </div>
+
             {/* Gallery Images Strip */}
             {business.gallery && business.gallery.length > 0 && (
               <div className="p-5 rounded-2xl bg-[#13110E] border border-[#2D2319]">
@@ -317,56 +409,7 @@ export const BusinessDetailsModal: React.FC<BusinessDetailsModalProps> = ({ busi
                 )}
               </div>
 
-              {/* Community write review form */}
-              <form onSubmit={handleCreateReview} className="pt-4 border-t border-[#2D2319] space-y-3" id="details-review-form">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-[#FFA048]">
-                  {t.writeReview}
-                </h4>
-
-                {reviewError && <p className="text-red-400 text-xs">{reviewError}</p>}
-                {reviewSuccess && <p className="text-green-400 text-xs">{reviewSuccess}</p>}
-
-                {/* Stars selector */}
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-450">{t.ratingLabel}:</span>
-                  <div className="flex gap-1">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <button
-                        key={star}
-                        type="button"
-                        onClick={() => setRating(star)}
-                        className="p-0.5 rounded focus:outline-none"
-                      >
-                        <Star
-                          className={`w-5 h-5 ${
-                            star <= rating ? 'text-[#FFA048] fill-[#FFA048]' : 'text-gray-700 hover:text-gray-500'
-                          }`}
-                        />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Comment Text */}
-                <div className="relative">
-                  <textarea
-                    rows={2}
-                    value={comment}
-                    onChange={(e) => setComment(e.target.value)}
-                    placeholder={t.commentPlaceholder}
-                    className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] focus:border-[#FFA048] text-xs outline-none text-[#F4E3D7] transition-all"
-                    id="details-comment-input"
-                  />
-                  <button
-                    type="submit"
-                    className="absolute bottom-2.5 right-2.5 p-1.5 rounded-lg bg-[#FFA048] hover:bg-opacity-95 text-black transition-all shadow-[0_0_15px_rgba(255,160,72,0.4)] hover:shadow-[0_0_20px_rgba(255,160,72,0.6)] active:scale-90"
-                    title={t.submitReview}
-                    id="details-btn-submit-comment"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </form>
+              {/* Past reviews list only — submit form is above under "Rate This Business" */}
             </div>
           </div>
 

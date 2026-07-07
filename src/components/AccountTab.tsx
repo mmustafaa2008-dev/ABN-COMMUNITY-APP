@@ -10,10 +10,12 @@ import {
   Globe,
   LogOut,
   ChevronRight,
+  ChevronDown,
   Eye,
   Zap,
 } from 'lucide-react';
-import { EditBusinessProfileModal } from './EditBusinessProfileModal';
+import { EditProfileModal } from './EditProfileModal';
+import { JobManagementScreen } from './JobManagementScreen';
 
 interface AccountTabProps {
   onOpenAuth: () => void;
@@ -34,6 +36,7 @@ export const AccountTab: React.FC<AccountTabProps> = ({ onOpenAuth, onSwitchTab 
     clearNotifications,
     hiringActive,
     setHiringActive,
+    ensureBusinessListing,
   } = useDirectory();
   const t = TRANSLATIONS[language];
 
@@ -41,6 +44,8 @@ export const AccountTab: React.FC<AccountTabProps> = ({ onOpenAuth, onSwitchTab 
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [hiringToggling, setHiringToggling] = useState(false);
+  const [businessPortalExpanded, setBusinessPortalExpanded] = useState(false);
 
   const activeNotifs = notifications.filter(
     (n) => n.receiverRole === 'all' || n.receiverRole === currentUser?.role
@@ -57,6 +62,10 @@ export const AccountTab: React.FC<AccountTabProps> = ({ onOpenAuth, onSwitchTab 
     ? businesses.find(b => b.ownerId === currentUser?.id || b.ownerId === currentUser?.email)
     : null;
 
+  const isHiringOn = currentUser?.role === 'business' && myBusiness
+    ? (hiringActive[myBusiness.id] ?? false)
+    : false;
+
   const roleBadgeLabel = () => {
     if (!currentUser) return '';
     if (currentUser.role === 'service_provider') return 'Service Provider';
@@ -72,14 +81,35 @@ export const AccountTab: React.FC<AccountTabProps> = ({ onOpenAuth, onSwitchTab 
     return '$50 Business Plan';
   };
 
-  if (isEditingProfile && myBusiness) {
+  if (isEditingProfile) {
     return (
-      <EditBusinessProfileModal
-        business={myBusiness}
-        onClose={() => setIsEditingProfile(false)}
-      />
+      <EditProfileModal onClose={() => setIsEditingProfile(false)} />
     );
   }
+
+  const handleBusinessPortalClick = () => {
+    if (!currentUser) return;
+    if (currentUser.role === 'business') {
+      setBusinessPortalExpanded((prev) => !prev);
+      return;
+    }
+    const hasListing = businesses.some(
+      (b) => b.ownerId === currentUser.id || b.ownerId === currentUser.email,
+    );
+    onSwitchTab(hasListing || currentUser.role === 'admin' ? 'portal-management' : 'business');
+  };
+
+  const handleHiringToggle = async () => {
+    if (currentUser?.role !== 'business' || hiringToggling) return;
+    setHiringToggling(true);
+    try {
+      const biz = (await ensureBusinessListing()) ?? myBusiness;
+      if (!biz) return;
+      await setHiringActive(biz.id, !(hiringActive[biz.id] ?? false));
+    } finally {
+      setHiringToggling(false);
+    }
+  };
 
   return (
     <div className="space-y-6" id="account-tab-container">
@@ -122,7 +152,8 @@ export const AccountTab: React.FC<AccountTabProps> = ({ onOpenAuth, onSwitchTab 
                 {currentUser.name.charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
-                <h3 className="text-xs font-black text-white truncate max-w-[160px]">{currentUser.email}</h3>
+                <h3 className="text-xs font-black text-white truncate max-w-[160px]">{currentUser.name}</h3>
+                <p className="text-[9px] text-gray-500 truncate max-w-[180px]">{currentUser.email}</p>
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className="text-[9px] text-green-400 font-bold flex items-center gap-1">
                     {currentUser.role === 'service_provider' && <Zap className="w-2.5 h-2.5 text-blue-400" />}
@@ -141,6 +172,19 @@ export const AccountTab: React.FC<AccountTabProps> = ({ onOpenAuth, onSwitchTab 
               Sign out
             </button>
           </div>
+
+          {/* Edit Profile — role-aware form (business/service listing or account settings) */}
+          <button
+            onClick={() => setIsEditingProfile(true)}
+            className="w-full flex items-center justify-between p-4 rounded-2xl bg-[#13110E] border border-[#2D2319] hover:border-[#FFA048]/40 transition-all group"
+            id="btn-edit-user-profile"
+          >
+            <span className="flex items-center gap-3 text-xs text-gray-300 font-semibold">
+              <User className="w-4 h-4 text-[#FFA048]" />
+              {t.editProfile}
+            </span>
+            <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-[#FFA048]" />
+          </button>
           
           {/* Active Business / Service Provider Metadata */}
           {myBusiness && (
@@ -184,66 +228,6 @@ export const AccountTab: React.FC<AccountTabProps> = ({ onOpenAuth, onSwitchTab 
             </div>
           )}
 
-          {myBusiness && (
-            <button
-              onClick={() => setIsEditingProfile(true)}
-              className="w-full flex items-center justify-between p-4 rounded-2xl bg-[#13110E] border border-[#2D2319] hover:border-[#FFA048]/40 transition-all group"
-              id="btn-edit-business-profile"
-            >
-              <span className="flex items-center gap-3 text-xs text-gray-300 font-semibold">
-                <span className="text-base" aria-hidden="true">📝</span>
-                {language === 'en' ? 'Edit Business Profile' : 'تعديل بيانات العمل'}
-              </span>
-              <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-[#FFA048]" />
-            </button>
-          )}
-
-          {/* ── Hiring Toggle — Business Person ($50) ONLY, not service providers ── */}
-          {myBusiness && currentUser?.role === 'business' && (
-            <div className="rounded-2xl bg-[#13110E] border border-[#2D2319] overflow-hidden">
-              <div className="flex items-center justify-between p-4">
-                <div className="flex items-center gap-3">
-                  <span className="text-base" aria-hidden="true">💼</span>
-                  <div>
-                    <span className="text-xs text-gray-200 font-semibold block">
-                      {language === 'en' ? 'Hiring Active (Post Jobs)' : 'التوظيف نشط (نشر وظائف)'}
-                    </span>
-                    <span className="text-[9px] text-gray-500">
-                      {language === 'en' ? 'Show job openings on the directory feed' : 'عرض الوظائف على الصفحة الرئيسية'}
-                    </span>
-                  </div>
-                </div>
-                {/* Toggle switch */}
-                <button
-                  onClick={() => setHiringActive(myBusiness.id, !(hiringActive[myBusiness.id] ?? false))}
-                  className={`relative w-11 h-6 rounded-full transition-all duration-300 flex-shrink-0 ${
-                    hiringActive[myBusiness.id] ? 'bg-[#FFA048]' : 'bg-[#2D2319]'
-                  }`}
-                  aria-label="Toggle hiring"
-                  id="toggle-hiring-active"
-                >
-                  <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all duration-300 ${
-                    hiringActive[myBusiness.id] ? 'left-6' : 'left-1'
-                  }`} />
-                </button>
-              </div>
-
-              {/* "Post a New Job" action tile — visible only when hiring is ON */}
-              {hiringActive[myBusiness.id] && (
-                <button
-                  onClick={() => onSwitchTab('job-management')}
-                  className="w-full flex items-center justify-between px-4 py-3.5 bg-[#FFA048]/8 border-t border-[#2D2319] hover:bg-[#FFA048]/15 transition-all group"
-                  id="btn-post-new-job"
-                >
-                  <span className="flex items-center gap-3 text-xs text-[#FFA048] font-bold">
-                    <span className="text-base" aria-hidden="true">➕</span>
-                    {language === 'en' ? 'Post a New Job / Manage Openings' : 'نشر وظيفة / إدارة الوظائف'}
-                  </span>
-                  <ChevronRight className="w-4 h-4 text-[#FFA048] group-hover:translate-x-0.5 transition-transform" />
-                </button>
-              )}
-            </div>
-          )}
         </div>
       )}
 
@@ -252,25 +236,37 @@ export const AccountTab: React.FC<AccountTabProps> = ({ onOpenAuth, onSwitchTab 
         {/* Business Portal — for business owners, service providers, and admins */}
         {currentUser && (currentUser.role === 'business' || currentUser.role === 'service_provider' || currentUser.role === 'admin') ? (
           <button
-            onClick={() => {
-              // Registered users go to management dashboard; unregistered go to registration flow
-              const hasListing = businesses.some(b => b.ownerId === currentUser.id || b.ownerId === currentUser.email);
-              onSwitchTab(hasListing || currentUser.role === 'admin' ? 'portal-management' : 'business');
-            }}
-            className="p-4 rounded-3xl bg-[#13110E] border border-[#2D2319] hover:border-[#FFA048]/40 transition-all flex flex-col text-left space-y-4 shadow-sm group"
+            onClick={handleBusinessPortalClick}
+            className={`p-4 rounded-3xl bg-[#13110E] border transition-all flex flex-col text-left space-y-4 shadow-sm group ${
+              currentUser.role === 'business' && businessPortalExpanded
+                ? 'border-[#FFA048]/60 ring-1 ring-[#FFA048]/20'
+                : 'border-[#2D2319] hover:border-[#FFA048]/40'
+            }`}
             id="block-nav-business"
+            aria-expanded={currentUser.role === 'business' ? businessPortalExpanded : undefined}
           >
-            <div className="w-10 h-10 rounded-2xl bg-[#FFA048]/10 text-[#FFA048] flex items-center justify-center border border-[#3A2E21]/60 group-hover:scale-105 transition-transform">
-              {currentUser.role === 'service_provider'
-                ? <Zap className="w-5 h-5 text-blue-400" />
-                : <Briefcase className="w-5 h-5 text-[#FFA048]" />}
+            <div className="w-full flex items-start justify-between">
+              <div className="w-10 h-10 rounded-2xl bg-[#FFA048]/10 text-[#FFA048] flex items-center justify-center border border-[#3A2E21]/60 group-hover:scale-105 transition-transform">
+                {currentUser.role === 'service_provider'
+                  ? <Zap className="w-5 h-5 text-blue-400" />
+                  : <Briefcase className="w-5 h-5 text-[#FFA048]" />}
+              </div>
+              {currentUser.role === 'business' && (
+                <ChevronDown
+                  className={`w-4 h-4 text-gray-500 transition-transform duration-300 ${
+                    businessPortalExpanded ? 'rotate-180 text-[#FFA048]' : ''
+                  }`}
+                />
+              )}
             </div>
             <div>
               <h4 className="text-xs font-black text-white">{t.businessPortal}</h4>
               <span className="text-[9px] text-gray-500 block mt-0.5">
-                {currentUser.role === 'service_provider'
-                  ? (language === 'en' ? 'Service dashboard & profile' : 'لوحة تحكم الخدمة')
-                  : t.portalSub}
+                {currentUser.role === 'business'
+                  ? (language === 'en' ? 'Manage your listing & jobs' : 'إدارة الإدراج والوظائف')
+                  : currentUser.role === 'service_provider'
+                    ? (language === 'en' ? 'Service dashboard & profile' : 'لوحة تحكم الخدمة')
+                    : t.portalSub}
               </span>
             </div>
           </button>
@@ -315,6 +311,52 @@ export const AccountTab: React.FC<AccountTabProps> = ({ onOpenAuth, onSwitchTab 
           </div>
         )}
       </div>
+
+      {/* ── Business Portal inline expansion (Business role only) ── */}
+      {currentUser?.role === 'business' && businessPortalExpanded && (
+        <div
+          className="rounded-3xl bg-[#13110E] border border-[#FFA048]/30 overflow-hidden animate-fade-in"
+          id="business-portal-inline-panel"
+        >
+          {/* Hiring Active sliding toggle */}
+          <div className="flex items-center justify-between p-4 border-b border-[#2D2319]/60 bg-[#0F0E0C]/40">
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="text-base flex-shrink-0" aria-hidden="true">💼</span>
+              <div className="min-w-0">
+                <span className="text-xs text-gray-200 font-semibold block">
+                  {language === 'en' ? 'Hiring Active (Post Jobs)' : 'التوظيف نشط (نشر وظائف)'}
+                </span>
+                <span className="text-[9px] text-gray-500 block">
+                  {language === 'en'
+                    ? 'Show job openings on the directory feed'
+                    : 'عرض الوظائف على الصفحة الرئيسية'}
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={handleHiringToggle}
+              disabled={hiringToggling}
+              className={`relative w-11 h-6 rounded-full transition-all duration-300 flex-shrink-0 cursor-pointer ${
+                isHiringOn ? 'bg-[#FFA048]' : 'bg-[#2D2319]'
+              } ${hiringToggling ? 'opacity-70' : ''}`}
+              aria-label="Toggle hiring"
+              aria-pressed={isHiringOn}
+              id="toggle-hiring-active-inline"
+            >
+              <span
+                className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all duration-300 ${
+                  isHiringOn ? 'left-6' : 'left-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Embedded job CRUD — stays on Account screen */}
+          <div className="p-4">
+            <JobManagementScreen embedded />
+          </div>
+        </div>
+      )}
 
       {/* GLOBAL PREFERENCE & ACCESS ROWS (Replica of Notifications & Privacy listings) */}
       <div className="py-2.5 rounded-3xl bg-[#13110E] border border-[#2D2319] divide-y divide-[#2D2319]/40" id="account-options-list">

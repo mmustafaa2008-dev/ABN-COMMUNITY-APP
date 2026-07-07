@@ -444,23 +444,31 @@ export const HomeTab: React.FC<HomeTabProps> = ({
         </div>
       )}
 
-      {/* ── Active Job Openings Row ── */}
-      {activeJobs.length > 0 && (
-        <div className="space-y-3 animate-fade-in-up" style={{animationDelay:'0.18s'}} id="home-jobs-row">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-extrabold text-[#F4E3D7] uppercase tracking-medium">
-              🔥 {language === 'en' ? 'Active Job Openings' : 'الوظائف المتاحة'}
-            </h3>
-            <button
-              onClick={() => onSwitchTab('job-board')}
-              className="text-[10px] text-[#FFA048] font-extrabold flex items-center gap-1 hover:underline"
-              id="btn-see-all-jobs"
-            >
-              {language === 'en' ? 'See All Jobs' : 'كل الوظائف'} <ArrowRight className="w-3 h-3" />
-            </button>
-          </div>
+      {/* ── Active Job Openings Row — always visible; empty state when no jobs ── */}
+      <div className="space-y-3 animate-fade-in-up" style={{animationDelay:'0.18s'}} id="home-jobs-row">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-extrabold text-[#F4E3D7] uppercase tracking-medium">
+            🔥 {language === 'en' ? 'Active Job Openings' : 'الوظائف المتاحة'}
+          </h3>
+          <button
+            onClick={() => onSwitchTab('job-board')}
+            className="text-[10px] text-[#FFA048] font-extrabold flex items-center gap-1 hover:underline"
+            id="btn-see-all-jobs"
+          >
+            {language === 'en' ? 'See All Jobs' : 'كل الوظائف'} <ArrowRight className="w-3 h-3" />
+          </button>
+        </div>
 
-          {/* Horizontal scrollable job cards */}
+        {activeJobs.length === 0 ? (
+          <div className="p-4 rounded-2xl bg-[#13110E] border border-[#2D2319] text-center">
+            <p className="text-xs text-gray-500">
+              {language === 'en'
+                ? 'No active job openings yet. Businesses can post jobs from Account → Hiring Active.'
+                : 'لا توجد وظائف نشطة حالياً. يمكن لأصحاب الأعمال نشر الوظائف من الحساب.'}
+            </p>
+          </div>
+        ) : (
+          /* Horizontal scrollable job cards */
           <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none snap-x" id="home-jobs-scroll">
             {activeJobs.map((job) => (
               <button
@@ -502,8 +510,8 @@ export const HomeTab: React.FC<HomeTabProps> = ({
               </button>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* All listings directory strip */}
       <div className="space-y-3 animate-fade-in-up" style={{animationDelay:'0.20s'}} id="home-listings-block">

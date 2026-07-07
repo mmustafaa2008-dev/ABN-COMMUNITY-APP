@@ -79,6 +79,9 @@ app.use('/api/auth',      require('./routes/auth'));
 app.use('/api/directory', require('./routes/directory'));
 app.use('/api/jobsboard', require('./routes/jobsBoard'));
 
+// Reviews — in-memory star ratings (userId + businessId + ratingScore + comment)
+app.use('/api/reviews', require('./routes/reviews'));
+
 // ── Health check ───────────────────────────────────────────────────────────
 
 app.get('/api/health', async (_req, res) => {
@@ -108,14 +111,16 @@ app.get('/api', (_req, res) => {
     message: 'ABN Community Directory API',
     version: '2.0.0',
     storage: {
-      auth:      'In-memory user store (demo accounts pre-seeded, resets on restart)',
-      directory: 'Supabase → profiles_directory table',
-      jobs:      'Supabase → jobs_board table',
+      auth:      'In-memory user store (4 demo accounts only)',
+      directory: 'In-memory profiles (empty until added via forms)',
+      jobs:      'In-memory jobs board (empty until added via forms)',
+      reviews:   'In-memory reviews (userId, businessId, ratingScore, comment)',
     },
     endpoints: {
       auth:      '/api/auth      — POST /register  POST /login  GET /me  PUT /me',
       directory: '/api/directory — GET /  GET /mine  GET /:id  POST /  PUT /:id  DELETE /:id  PUT /:id/hiring',
       jobsboard: '/api/jobsboard — GET /  GET /mine  GET /:id  POST /  PUT /:id  DELETE /:id',
+      reviews:   '/api/reviews   — GET /?businessId=  POST /',
       health:    '/api/health    — GET /',
     },
     demoAccounts: [

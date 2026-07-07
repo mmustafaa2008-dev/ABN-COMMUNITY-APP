@@ -1,6 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { useDirectory } from '../context/DirectoryContext';
 import { TRANSLATIONS } from '../data/translations';
+import { ImageUploadGrid } from './ImageUploadGrid';
 import {
   CreditCard,
   ShieldCheck,
@@ -23,10 +24,17 @@ import {
   ArrowRight,
   ArrowLeft,
   Zap,
-  Camera,
-  ImageIcon,
 } from 'lucide-react';
 import { Business, PaymentRecord } from '../types';
+
+const DEFAULT_LOGO = 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=200&h=200';
+const DEFAULT_COVER = 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?auto=format&fit=crop&q=80&w=1200&h=400';
+
+const buildListingImages = (gallery: string[] | undefined, logoUrl?: string): string[] => {
+  if (gallery && gallery.length > 0) return gallery.slice(0, 5);
+  if (logoUrl) return [logoUrl];
+  return [];
+};
 
 interface BusinessPortalTabProps {
   onOpenAuth: () => void;
@@ -42,7 +50,9 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
     payments,
     addBusiness,
     updateBusiness,
-    addPayment
+    addPayment,
+    apiToken,
+    refreshDirectory,
   } = useDirectory();
 
   // Derive plan price by role
@@ -72,24 +82,10 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
   const [regWhatsapp, setRegWhatsapp] = useState('');
   const [regWeb, setRegWeb] = useState('');
   const [regHours, setRegHours] = useState('8:00 AM - 10:00 PM');
-  const [regLogo, setRegLogo] = useState('');
+  const [regImages, setRegImages] = useState<string[]>([]);
   const [regCover, setRegCover] = useState('');
-  const [regImagePreview, setRegImagePreview] = useState('');
   const [regSuccess, setRegSuccess] = useState('');
   const [regError, setRegError] = useState('');
-  const regFileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleRegFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64 = reader.result as string;
-      setRegImagePreview(base64);
-      setRegLogo(base64);
-    };
-    reader.readAsDataURL(file);
-  };
 
   // ── Bug #3 Fix: Edit form state — initialized empty, populated via useEffect ──
   const [editName, setEditName] = useState('');
@@ -97,23 +93,9 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
   const [editPhone, setEditPhone] = useState('');
   const [editWhatsapp, setEditWhatsapp] = useState('');
   const [editHours, setEditHours] = useState('');
-  const [editLogo, setEditLogo] = useState('');
+  const [editImages, setEditImages] = useState<string[]>([]);
   const [editCover, setEditCover] = useState('');
-  const [editImagePreview, setEditImagePreview] = useState('');
   const [editSuccess, setEditSuccess] = useState('');
-  const editFileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleEditFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64 = reader.result as string;
-      setEditImagePreview(base64);
-      setEditLogo(base64);
-    };
-    reader.readAsDataURL(file);
-  };
 
   // Populate edit fields whenever myBusiness changes (e.g. after sign-in)
   React.useEffect(() => {
@@ -123,8 +105,7 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
       setEditPhone(myBusiness.phone);
       setEditWhatsapp(myBusiness.whatsapp);
       setEditHours(myBusiness.workingHours[language] || myBusiness.workingHours.en);
-      setEditLogo(myBusiness.logoUrl);
-      setEditImagePreview(myBusiness.logoUrl);
+      setEditImages(buildListingImages(myBusiness.gallery, myBusiness.logoUrl));
       setEditCover(myBusiness.coverUrl);
     }
   }, [myBusiness?.id, language]);
@@ -199,19 +180,93 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
   }
 
   // Handle registration submission
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!regName || !regSubcat || !regDesc || !regAddress || !regPhone || !regWhatsapp) {
       setRegError(t.allFieldsRequired);
       return;
     }
 
-    const defaultLogo = regLogo || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=200&h=200';
-    const defaultCover = regCover || 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?auto=format&fit=crop&q=80&w=1200&h=400';
+    const defaultLogo = regImages[0] || DEFAULT_LOGO;
+    const defaultCover = regImages[1] || regCover || DEFAULT_COVER;
+    const gallery = regImages.length > 0 ? regImages : [defaultCover];
+    const cat = categories.find((c) => c.id === regCatId);
+    const categoryLabel = cat?.name.en || regSubcat;
+
+    if (apiToken && currentUser) {
+      try {
+        const res = await fetch('/api/directory', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiToken}`,
+          },
+          body: JSON.stringify({
+            businessName: regName,
+            category: categoryLabel,
+            description: regDesc,
+            imageUrl: defaultLogo,
+            coverUrl: defaultCover,
+            address: regAddress,
+            area: regArea || 'Baghdad',
+            city: regCity,
+            phone: regPhone,
+            whatsapp: regWhatsapp,
+            website: regWeb,
+            workingHours: regHours,
+            subscriptionTier: planAmount,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setRegError(data.error || t.allFieldsRequired);
+          return;
+        }
+
+        const newBiz: Business = {
+          id: String(data.id ?? `biz-${Date.now()}`),
+          ownerId: currentUser.email,
+          name: regName,
+          logoUrl: defaultLogo,
+          coverUrl: defaultCover,
+          description: { en: regDesc, ar: regDesc },
+          categoryId: regCatId,
+          subcategory: { en: regSubcat, ar: regSubcat },
+          address: regAddress,
+          city: regCity as Business['city'],
+          area: regArea || 'Baghdad',
+          isVerified: Boolean(data.isVerified),
+          status: 'active',
+          phone: regPhone,
+          whatsapp: regWhatsapp,
+          website: regWeb,
+          workingHours: { en: regHours, ar: regHours },
+          membershipExpiryDate: String(data.membershipExpiry ?? new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]),
+          gallery,
+          rating: 5.0,
+          reviewsCount: 0,
+        };
+        addBusiness(newBiz);
+        await refreshDirectory();
+        setRegSuccess(t.registeredSuccessfully);
+        setRegError('');
+        setRegName('');
+        setRegSubcat('');
+        setRegDesc('');
+        setRegAddress('');
+        setRegPhone('');
+        setRegWhatsapp('');
+        setRegWeb('');
+        setTimeout(() => setRegSuccess(''), 5000);
+        return;
+      } catch {
+        setRegError(language === 'en' ? 'Could not reach server. Saved locally only.' : 'تعذر الاتصال بالخادم.');
+      }
+    }
 
     const newBiz: Business = {
       id: `biz-${Date.now()}`,
-      ownerId: currentUser.id,
+      ownerId: currentUser?.email || currentUser?.id || '',
       name: regName,
       logoUrl: defaultLogo,
       coverUrl: defaultCover,
@@ -228,7 +283,7 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
       website: regWeb,
       workingHours: { en: regHours, ar: regHours },
       membershipExpiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      gallery: [defaultCover],
+      gallery,
       rating: 5.0,
       reviewsCount: 0,
       // Add custom field or logic to differentiate type? We'll just stick to standard Business for now.
@@ -247,7 +302,7 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
   };
 
   // Profile update submit
-  const handleProfileUpdate = (e: React.FormEvent) => {
+  const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!myBusiness) return;
 
@@ -264,11 +319,37 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
         en: editHours,
         ar: language === 'ar' ? editHours : myBusiness.workingHours.ar
       },
-      logoUrl: editLogo,
-      coverUrl: editCover
+      logoUrl: editImages[0] || myBusiness.logoUrl,
+      coverUrl: editImages[1] || editCover || myBusiness.coverUrl,
+      gallery: editImages.length > 0 ? editImages : myBusiness.gallery,
     };
 
     updateBusiness(updatedBiz);
+
+    if (apiToken) {
+      try {
+        await fetch(`/api/directory/${myBusiness.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiToken}`,
+          },
+          body: JSON.stringify({
+            businessName: editName,
+            description: editDesc,
+            phone: editPhone,
+            whatsapp: editWhatsapp,
+            workingHours: editHours,
+            imageUrl: editImages[0] || myBusiness.logoUrl,
+            coverUrl: editImages[1] || editCover || myBusiness.coverUrl,
+          }),
+        });
+        await refreshDirectory();
+      } catch {
+        console.warn('[ABN] Could not sync portal profile edit to server.');
+      }
+    }
+
     setEditSuccess(language === 'en' ? 'Profile details updated successfully!' : 'تم تحديث بيانات الصفحة بنجاح!');
     setTimeout(() => setEditSuccess(''), 4000);
     setActivePortalTab('dash');
@@ -549,46 +630,14 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
             {regSuccess && <p className="p-3 bg-green-950/45 border border-green-900 text-green-300 text-xs rounded-xl">{regSuccess}</p>}
             {regError && <p className="p-3 bg-red-950/45 border border-red-900 text-red-300 text-xs rounded-xl">{regError}</p>}
 
-            {/* ── Image Picker ── */}
-            <div>
-              <label className="block text-xs text-gray-400 mb-2">
-                {language === 'en' ? 'Business / Service Logo Image' : 'صورة الشعار'}
-              </label>
-              <div className="flex items-start gap-3">
-                <div className="w-20 h-20 rounded-xl bg-[#0F0E0C] border border-[#2D2319] overflow-hidden flex-shrink-0 flex items-center justify-center">
-                  {(regImagePreview || regLogo) ? (
-                    <img src={regImagePreview || regLogo} alt="Preview" className="w-full h-full object-cover" />
-                  ) : (
-                    <ImageIcon className="w-7 h-7 text-gray-600" />
-                  )}
-                </div>
-                <div className="flex-1 space-y-2">
-                  <input
-                    type="file"
-                    ref={regFileInputRef}
-                    onChange={handleRegFileChange}
-                    accept="image/*"
-                    className="hidden"
-                    id="reg-file-input-logo"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => regFileInputRef.current?.click()}
-                    className="w-full py-2 rounded-xl bg-[#191613] border border-[#2D2319] text-xs text-gray-300 hover:text-white hover:border-[#FFA048]/40 transition-all flex items-center justify-center gap-2"
-                  >
-                    <Camera className="w-3.5 h-3.5 text-[#FFA048]" />
-                    {language === 'en' ? '📸 Upload Photo' : '📸 رفع صورة'}
-                  </button>
-                  <input
-                    type="url"
-                    value={regLogo}
-                    onChange={(e) => { setRegLogo(e.target.value); setRegImagePreview(e.target.value); }}
-                    placeholder={language === 'en' ? 'or paste image URL...' : 'أو الصق رابط الصورة...'}
-                    className="w-full p-2 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white placeholder-gray-600 outline-none focus:border-[#FFA048]/40"
-                  />
-                </div>
-              </div>
-            </div>
+            {/* ── Image Upload Grid ── */}
+            <ImageUploadGrid
+              id="reg-image-upload"
+              images={regImages}
+              onChange={setRegImages}
+              language={language}
+              label={language === 'en' ? 'Upload Business/Service Images*' : 'رفع صور النشاط/الخدمة*'}
+            />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -757,7 +806,7 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
                   setEditPhone(myBusiness.phone);
                   setEditWhatsapp(myBusiness.whatsapp);
                   setEditHours(myBusiness.workingHours[language] || myBusiness.workingHours.en);
-                  setEditLogo(myBusiness.logoUrl);
+                  setEditImages(buildListingImages(myBusiness.gallery, myBusiness.logoUrl));
                   setEditCover(myBusiness.coverUrl);
                   setActivePortalTab('edit');
                 }}
@@ -960,46 +1009,14 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
                   </div>
                 </div>
 
-                {/* ── Image Picker (Edit) ── */}
-                <div>
-                  <label className="block text-xs text-gray-400 mb-2">
-                    {language === 'en' ? 'Business / Service Logo Image' : 'صورة الشعار'}
-                  </label>
-                  <div className="flex items-start gap-3">
-                    <div className="w-20 h-20 rounded-xl bg-[#0F0E0C] border border-[#2D2319] overflow-hidden flex-shrink-0 flex items-center justify-center">
-                      {(editImagePreview || editLogo) ? (
-                        <img src={editImagePreview || editLogo} alt="Preview" className="w-full h-full object-cover" />
-                      ) : (
-                        <ImageIcon className="w-7 h-7 text-gray-600" />
-                      )}
-                    </div>
-                    <div className="flex-1 space-y-2">
-                      <input
-                        type="file"
-                        ref={editFileInputRef}
-                        onChange={handleEditFileChange}
-                        accept="image/*"
-                        className="hidden"
-                        id="edit-portal-file-input-logo"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => editFileInputRef.current?.click()}
-                        className="w-full py-2 rounded-xl bg-[#191613] border border-[#2D2319] text-xs text-gray-300 hover:text-white hover:border-[#FFA048]/40 transition-all flex items-center justify-center gap-2"
-                      >
-                        <Camera className="w-3.5 h-3.5 text-[#FFA048]" />
-                        {language === 'en' ? '📸 Change Photo' : '📸 تغيير الصورة'}
-                      </button>
-                      <input
-                        type="url"
-                        value={editLogo}
-                        onChange={(e) => { setEditLogo(e.target.value); setEditImagePreview(e.target.value); }}
-                        placeholder={language === 'en' ? 'or paste image URL...' : 'أو الصق رابط الصورة...'}
-                        className="w-full p-2 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-[#F4E3D7] placeholder-gray-600 outline-none focus:border-[#FFA048]/40"
-                      />
-                    </div>
-                  </div>
-                </div>
+                {/* ── Image Upload Grid (Edit) ── */}
+                <ImageUploadGrid
+                  id="edit-portal-image-upload"
+                  images={editImages}
+                  onChange={setEditImages}
+                  language={language}
+                  label={language === 'en' ? 'Upload Business/Service Images*' : 'رفع صور النشاط/الخدمة*'}
+                />
 
                 <div>
                   <label className="block text-xs text-gray-450 mb-1">{t.coverUrl}</label>

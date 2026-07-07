@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import {
   UserProfile, Business, BusinessStatus, Category, Review,
   PaymentRecord, AppNotification, UserRole, Product, Order, Job, JobCategory,
@@ -6,7 +6,30 @@ import {
 import {
   INITIAL_CATEGORIES, INITIAL_BUSINESSES, INITIAL_REVIEWS,
   INITIAL_PAYMENTS, INITIAL_PRODUCTS, INITIAL_ORDERS, INITIAL_JOBS, INITIAL_HIRING_ACTIVE,
+  INITIAL_DEMO_NOTIFICATIONS,
 } from '../data/mockData';
+
+/** Bump to force-clear cached mock listings only (never user auth or notifications). */
+const DATA_STORE_VERSION = '5-clean-slate-v2';
+if (typeof window !== 'undefined') {
+  const stored = localStorage.getItem('shia_dir_data_version');
+  if (stored !== DATA_STORE_VERSION) {
+    [
+      'shia_dir_businesses',
+      'shia_dir_jobs',
+      'shia_dir_reviews',
+      'shia_dir_hiring_active',
+    ].forEach((key) => localStorage.removeItem(key));
+    localStorage.setItem('shia_dir_data_version', DATA_STORE_VERSION);
+  }
+
+  /** Restore demo notification feed when upgrading (UI-only seed). */
+  const NOTIF_SEED_VERSION = 'demo-26-v1';
+  if (localStorage.getItem('shia_dir_notif_seed') !== NOTIF_SEED_VERSION) {
+    localStorage.removeItem('shia_dir_notifications');
+    localStorage.setItem('shia_dir_notif_seed', NOTIF_SEED_VERSION);
+  }
+}
 
 // ── API helpers ────────────────────────────────────────────────────────────
 
@@ -68,6 +91,7 @@ interface DirectoryContextType {
   signIn:         (email: string, phone: string, role: UserRole, name?: string) => void;
   apiLogin:       (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   signOut:        () => void;
+  updateUserProfile: (updates: Partial<Pick<UserProfile, 'name' | 'phone' | 'preferredLanguage'>>) => Promise<{ success: boolean; error?: string }>;
 
   // i18n / theme
   language:       'en' | 'ar' | 'fa';
@@ -88,6 +112,8 @@ interface DirectoryContextType {
 
   reviews:        Review[];
   addReview:      (review: Review) => void;
+  fetchReviewsForBusiness: (businessId: string) => Promise<void>;
+  submitReview:   (businessId: string, rating: number, comment?: string) => Promise<{ success: boolean; error?: string }>;
 
   favorites:      string[];
   toggleFavorite: (businessId: string) => void;
@@ -112,7 +138,8 @@ interface DirectoryContextType {
   deleteJob:      (id: string) => void;
 
   hiringActive:   Record<string, boolean>;
-  setHiringActive:(businessId: string, active: boolean) => void;
+  setHiringActive:(businessId: string, active: boolean) => Promise<void>;
+  ensureBusinessListing: () => Promise<Business | null>;
 }
 
 // ── Context & Provider ─────────────────────────────────────────────────────
@@ -147,15 +174,9 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return INITIAL_CATEGORIES;
   });
 
-  const [businesses, setBusinesses] = useState<Business[]>(() => {
-    try { const s = localStorage.getItem('shia_dir_businesses'); if (s) return JSON.parse(s); } catch { /**/ }
-    return INITIAL_BUSINESSES;
-  });
+  const [businesses, setBusinesses] = useState<Business[]>(INITIAL_BUSINESSES);
 
-  const [reviews, setReviews] = useState<Review[]>(() => {
-    try { const s = localStorage.getItem('shia_dir_reviews'); if (s) return JSON.parse(s); } catch { /**/ }
-    return INITIAL_REVIEWS;
-  });
+  const [reviews, setReviews] = useState<Review[]>(INITIAL_REVIEWS);
 
   const [favorites, setFavorites] = useState<string[]>(() => {
     try { const s = localStorage.getItem('shia_dir_favorites'); if (s) return JSON.parse(s); } catch { /**/ }
@@ -177,30 +198,24 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return INITIAL_ORDERS;
   });
 
-  const [jobs, setJobs] = useState<Job[]>(() => {
-    try { const s = localStorage.getItem('shia_dir_jobs'); if (s) return JSON.parse(s); } catch { /**/ }
-    return INITIAL_JOBS;
-  });
+  const [jobs, setJobs] = useState<Job[]>(INITIAL_JOBS);
 
-  const [hiringActive, setHiringActiveState] = useState<Record<string, boolean>>(() => {
-    try { const s = localStorage.getItem('shia_dir_hiring_active'); if (s) return JSON.parse(s); } catch { /**/ }
-    return INITIAL_HIRING_ACTIVE;
-  });
+  const [hiringActive, setHiringActiveState] = useState<Record<string, boolean>>(INITIAL_HIRING_ACTIVE);
 
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
-    try { const s = localStorage.getItem('shia_dir_notifications'); if (s) return JSON.parse(s); } catch { /**/ }
-    return [{
-      id: 'notif-1',
-      title: 'App Launched!',
-      message: 'Welcome to the Ahle Bait Network (ABN) Business Directory.',
-      date: '2026-06-19',
-      isRead: false,
-      receiverRole: 'all' as const,
-    }];
+    try {
+      const s = localStorage.getItem('shia_dir_notifications');
+      if (s) {
+        const parsed = JSON.parse(s);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch { /**/ }
+    return INITIAL_DEMO_NOTIFICATIONS;
   });
 
   // ── localStorage sync ────────────────────────────────────────────────────
-  useEffect(() => { localStorage.setItem('shia_dir_user',     currentUser ? JSON.stringify(currentUser) : ''); }, [currentUser]);
+  useEffect(() => { localStorage.setItem('shia_dir_user', currentUser ? JSON.stringify(currentUser) : ''); }, [currentUser]);
+  useEffect(() => { localStorage.setItem('shia_dir_token', apiToken || ''); }, [apiToken]);
   useEffect(() => { localStorage.setItem('shia_dir_lang',     language); }, [language]);
   useEffect(() => { localStorage.setItem('shia_dir_theme',    theme); }, [theme]);
   useEffect(() => { localStorage.setItem('shia_dir_categories', JSON.stringify(categories)); }, [categories]);
@@ -223,9 +238,31 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, [theme]);
 
-  // ── Live API fetch on mount ───────────────────────────────────────────────
-  // Fetches the Supabase-backed directory + jobs board.
-  // Gracefully falls back to mock data if the backend is unreachable.
+  // ── Live API fetch — source of truth (starts empty until you add listings) ──
+  const syncMyDirectoryProfile = useCallback(async (token: string, userEmail?: string): Promise<void> => {
+    try {
+      const res = await fetch('/api/directory/mine', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const profile: Record<string, unknown> = await res.json();
+      const mapped = mapDirectoryProfile(profile);
+      setBusinesses((prev) => {
+        const rest = prev.filter((b) =>
+          b.ownerId !== mapped.ownerId &&
+          b.ownerId !== userEmail &&
+          b.id !== mapped.id
+        );
+        return [...rest, mapped];
+      });
+      if (profile.hiringActive !== undefined) {
+        setHiringActiveState((p) => ({ ...p, [mapped.id]: Boolean(profile.hiringActive) }));
+      }
+    } catch {
+      console.warn('[ABN Directory] Could not load your directory profile.');
+    }
+  }, []);
+
   const refreshDirectory = async (): Promise<void> => {
     try {
       const [dirRes, jobsRes] = await Promise.all([
@@ -234,22 +271,34 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       ]);
       if (dirRes.ok) {
         const dirData: Record<string, unknown>[] = await dirRes.json();
-        if (Array.isArray(dirData) && dirData.length > 0) {
+        if (Array.isArray(dirData)) {
           setBusinesses(dirData.map(mapDirectoryProfile));
-          // Populate hiringActive from the profile field
           const hiring: Record<string, boolean> = {};
           dirData.forEach((p) => { hiring[String(p.id)] = Boolean(p.hiringActive); });
-          setHiringActiveState((prev) => ({ ...prev, ...hiring }));
+          setHiringActiveState(hiring);
+        } else {
+          setBusinesses([]);
+          setHiringActiveState({});
         }
+      } else {
+        setBusinesses([]);
+        setHiringActiveState({});
       }
       if (jobsRes.ok) {
         const jobsData: Record<string, unknown>[] = await jobsRes.json();
-        if (Array.isArray(jobsData) && jobsData.length > 0) {
-          setJobs(jobsData.map(mapApiJob));
-        }
+        setJobs(Array.isArray(jobsData) ? jobsData.map(mapApiJob) : []);
+      } else {
+        setJobs([]);
       }
     } catch {
-      console.warn('[ABN Directory] Backend not reachable — using cached/mock data.');
+      setBusinesses([]);
+      setJobs([]);
+      setHiringActiveState({});
+      console.warn('[ABN Directory] Backend not reachable — showing empty directory.');
+    }
+
+    if (apiToken) {
+      await syncMyDirectoryProfile(apiToken, currentUser?.email);
     }
   };
 
@@ -259,6 +308,12 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     fetchDoneRef.current = true;
     refreshDirectory();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (apiToken) {
+      syncMyDirectoryProfile(apiToken, currentUser?.email);
+    }
+  }, [apiToken, currentUser?.email, syncMyDirectoryProfile]);
 
   // ── Subscription expiry check ─────────────────────────────────────────────
   const expiryCheckDone = useRef(false);
@@ -335,7 +390,8 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       addNotification('Login Successful', `Assalamu Alaykum, ${user.name}. Welcome back!`, normaliseRole(user.role));
 
       // After login, re-fetch the live directory so business matches the logged-in user
-      refreshDirectory();
+      await refreshDirectory();
+      await syncMyDirectoryProfile(token, user.email);
       return { success: true };
     } catch {
       return { success: false, error: 'Cannot reach server. Make sure the backend is running.' };
@@ -357,6 +413,49 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     localStorage.removeItem('shia_dir_token');
   };
 
+  const updateUserProfile = async (
+    updates: Partial<Pick<UserProfile, 'name' | 'phone' | 'preferredLanguage'>>,
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (!currentUser) {
+      return { success: false, error: 'You must be signed in to update your profile.' };
+    }
+
+    if (apiToken) {
+      try {
+        const res = await fetch('/api/auth/me', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiToken}`,
+          },
+          body: JSON.stringify(updates),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          return { success: false, error: data.error || 'Failed to update profile.' };
+        }
+        setCurrentUser({
+          ...currentUser,
+          name:              data.name              ?? currentUser.name,
+          phone:             data.phone             ?? currentUser.phone,
+          preferredLanguage: data.preferredLanguage ?? currentUser.preferredLanguage,
+        });
+        if (updates.preferredLanguage) {
+          setLanguageState(updates.preferredLanguage);
+        }
+        return { success: true };
+      } catch {
+        // fall through to offline update
+      }
+    }
+
+    setCurrentUser({ ...currentUser, ...updates });
+    if (updates.preferredLanguage) {
+      setLanguageState(updates.preferredLanguage);
+    }
+    return { success: true };
+  };
+
   // ── Category helpers ──────────────────────────────────────────────────────
   const setLanguage  = (lang: 'en' | 'ar' | 'fa') => setLanguageState(lang);
   const setTheme     = (t: 'light' | 'dark' | 'system') => setThemeState(t);
@@ -376,7 +475,8 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // ── Review helpers ────────────────────────────────────────────────────────
   const addReview = (review: Review) => {
     setReviews((prevR) => {
-      const updated = [review, ...prevR];
+      const exists = prevR.some((r) => r.id === review.id);
+      const updated = exists ? prevR : [review, ...prevR];
       setBusinesses((prevB) => prevB.map((biz) => {
         if (biz.id !== review.businessId) return biz;
         const bizRevs = updated.filter((r) => r.businessId === review.businessId);
@@ -385,6 +485,74 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }));
       return updated;
     });
+  };
+
+  const applyBusinessAggregate = (businessId: string, avg: number, count: number) => {
+    setBusinesses((prev) => prev.map((biz) =>
+      biz.id === businessId ? { ...biz, rating: avg, reviewsCount: count } : biz
+    ));
+  };
+
+  const fetchReviewsForBusiness = useCallback(async (businessId: string): Promise<void> => {
+    try {
+      const res = await fetch(`/api/reviews?businessId=${encodeURIComponent(businessId)}`);
+      if (!res.ok) return;
+      const data: Review[] = await res.json();
+      if (!Array.isArray(data)) return;
+      setReviews((prev) => {
+        const others = prev.filter((r) => r.businessId !== businessId);
+        return [...data, ...others];
+      });
+    } catch {
+      console.warn('[ABN Directory] Could not load reviews from API.');
+    }
+  }, []);
+
+  const submitReview = async (
+    businessId: string,
+    rating: number,
+    comment = '',
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (!currentUser) {
+      return { success: false, error: 'You must be signed in to submit a review.' };
+    }
+
+    if (apiToken) {
+      try {
+        const res = await fetch('/api/reviews', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiToken}`,
+          },
+          body: JSON.stringify({ businessId, rating, comment: comment.trim() }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          return { success: false, error: data.error || 'Failed to submit review.' };
+        }
+        const review = data.review as Review;
+        addReview(review);
+        if (data.aggregate) {
+          applyBusinessAggregate(businessId, data.aggregate.avg, data.aggregate.count);
+        }
+        return { success: true };
+      } catch {
+        // fall through to offline save
+      }
+    }
+
+    const offlineReview: Review = {
+      id: `rev-${Date.now()}`,
+      businessId,
+      userId: currentUser.id,
+      userName: currentUser.name || currentUser.email.split('@')[0],
+      rating,
+      comment: comment.trim(),
+      date: new Date().toISOString().split('T')[0],
+    };
+    addReview(offlineReview);
+    return { success: true };
   };
 
   // ── Favorites ─────────────────────────────────────────────────────────────
@@ -417,9 +585,97 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const updateJob = (updated: Job) => setJobs((p) => p.map((j) => (j.id === updated.id ? updated : j)));
   const deleteJob = (id: string) => setJobs((p) => p.filter((j) => j.id !== id));
 
-  const setHiringActive = (businessId: string, active: boolean) => {
+  /** Auto-provision a minimal directory listing for business users who have none yet. */
+  const ensureBusinessListing = async (): Promise<Business | null> => {
+    if (!currentUser || currentUser.role !== 'business') return null;
+
+    const existing = businesses.find(
+      (b) => b.ownerId === currentUser.id || b.ownerId === currentUser.email,
+    );
+    if (existing) return existing;
+
+    const payload = {
+      businessName: currentUser.name || 'My Business',
+      category:     'General',
+      description:  'Business listing — customize via Edit Profile.',
+      phone:        currentUser.phone || '',
+      whatsapp:     currentUser.phone || '',
+      city:         'New York',
+      workingHours: '9:00 AM - 9:00 PM',
+      subscriptionTier: 50,
+    };
+
+    if (apiToken) {
+      try {
+        const res = await fetch('/api/directory', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiToken}`,
+          },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          const data: Record<string, unknown> = await res.json();
+          const mapped = mapDirectoryProfile(data);
+          setBusinesses((prev) => {
+            const rest = prev.filter((b) => b.ownerId !== mapped.ownerId);
+            return [...rest, mapped];
+          });
+          return mapped;
+        }
+      } catch {
+        console.warn('[ABN Directory] Could not auto-provision listing via API.');
+      }
+    }
+
+    const localBiz: Business = {
+      id:                   `biz-${Date.now()}`,
+      ownerId:              currentUser.email,
+      name:                 payload.businessName,
+      logoUrl:              '',
+      coverUrl:             '',
+      description:          { en: payload.description, ar: payload.description },
+      categoryId:           'cat-maintenance',
+      subcategory:          { en: payload.category, ar: payload.category },
+      address:              '',
+      city:                 'New York',
+      area:                 '',
+      isVerified:           false,
+      status:               'active',
+      phone:                payload.phone,
+      whatsapp:             payload.whatsapp,
+      workingHours:         { en: payload.workingHours, ar: payload.workingHours },
+      membershipExpiryDate: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+      gallery:              [],
+      rating:               0,
+      reviewsCount:         0,
+    };
+    addBusiness(localBiz);
+    return localBiz;
+  };
+
+  const setHiringActive = async (businessId: string, active: boolean): Promise<void> => {
     setHiringActiveState((p) => ({ ...p, [businessId]: active }));
     setJobs((p) => p.map((j) => (j.businessId === businessId ? { ...j, isActive: active } : j)));
+
+    if (apiToken) {
+      try {
+        const res = await fetch(`/api/directory/${businessId}/hiring`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiToken}`,
+          },
+          body: JSON.stringify({ isActive: active }),
+        });
+        if (res.ok) {
+          await refreshDirectory();
+        }
+      } catch {
+        console.warn('[ABN Directory] Could not sync hiring toggle to server.');
+      }
+    }
   };
 
   // ── Notifications ─────────────────────────────────────────────────────────
@@ -438,18 +694,18 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // ── Provider ──────────────────────────────────────────────────────────────
   return (
     <DirectoryContext.Provider value={{
-      currentUser, apiToken, signIn, apiLogin, signOut,
+      currentUser, apiToken, signIn, apiLogin, signOut, updateUserProfile,
       language, setLanguage, theme, setTheme,
       categories, addCategory, removeCategory,
       businesses, addBusiness, updateBusiness, removeBusiness, refreshDirectory,
-      reviews, addReview,
+      reviews, addReview, fetchReviewsForBusiness, submitReview,
       favorites, toggleFavorite,
       payments, addPayment,
       products, addProduct,
       orders, updateOrderStatus,
       notifications, addNotification, markNotificationsAsRead, clearNotifications,
       jobs, addJob, updateJob, deleteJob,
-      hiringActive, setHiringActive,
+      hiringActive, setHiringActive, ensureBusinessListing,
     }}>
       {children}
     </DirectoryContext.Provider>

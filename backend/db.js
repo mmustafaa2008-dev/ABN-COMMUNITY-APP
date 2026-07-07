@@ -1,11 +1,13 @@
 /**
- * db.js — In-memory user store (pure JavaScript, zero native dependencies)
+ * db.js — In-memory stores (pure JavaScript, zero native dependencies)
  *
- * Replaces the old better-sqlite3 layer.  All live business / jobs data lives
- * in Supabase.  This module only manages the user accounts that the auth routes
- * need (register / login / me).
+ * • users             — 4 demo auth accounts (seeded at startup)
+ * • reviews           — star ratings (empty until users submit)
+ * • directoryProfiles — business/service listings (EMPTY — add via forms)
+ * • jobsBoard         — job postings (EMPTY — add via forms)
  *
- * Data resets on server restart — demo accounts are re-seeded automatically.
+ * Supabase seed rows are wiped on every server start so old demo data
+ * (Al-Kawthar Grocery, Deli Chef, etc.) cannot reappear.
  */
 
 'use strict';
@@ -13,12 +15,19 @@
 const bcrypt = require('bcryptjs');
 
 // ---------------------------------------------------------------------------
-// User store:  Map<email (lowercase) → userRecord>
+// Stores
 // ---------------------------------------------------------------------------
 const users = new Map();
+const reviews = [];
+
+/** @type {Array<Record<string, unknown>>} — API-shaped directory profiles */
+const directoryProfiles = [];
+
+/** @type {Array<Record<string, unknown>>} — API-shaped job rows */
+const jobsBoard = [];
 
 // ---------------------------------------------------------------------------
-// Demo accounts — seeded once at startup so test logins work immediately
+// Demo auth accounts ONLY — no mock listings or jobs
 // ---------------------------------------------------------------------------
 const DEMO_ACCOUNTS = [
   {
@@ -55,26 +64,52 @@ const DEMO_ACCOUNTS = [
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Build a deterministic user id:  "business-hassanalkawthar..." */
 const stableId = (role, email) =>
   `${role}-${email.replace(/[^a-z0-9]/gi, '').toLowerCase()}`;
 
-/** Unique time-based id with optional prefix */
 const newId = (prefix = '') =>
   `${prefix}${prefix ? '-' : ''}${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
-/** Today as an ISO date string (YYYY-MM-DD) */
 const today = () => new Date().toISOString().split('T')[0];
 
 // ---------------------------------------------------------------------------
-// Seed
+// Wipe any leftover Supabase seed/demo rows on startup
 // ---------------------------------------------------------------------------
-const HASH_ROUNDS = 10; // 10 rounds is fast at startup and still secure enough
+async function wipeSupabaseDemoData() {
+  if (process.env.SKIP_SUPABASE_WIPE === 'true') return;
+
+  try {
+    const { supabaseAdmin } = require('./supabase');
+    const { error: jobsErr } = await supabaseAdmin
+      .from('jobs_board')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000');
+    const { error: dirErr } = await supabaseAdmin
+      .from('profiles_directory')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000');
+
+    if (!jobsErr && !dirErr) {
+      console.log('[db] Supabase demo listings & jobs wiped (clean slate).');
+    } else if (jobsErr || dirErr) {
+      console.warn('[db] Supabase wipe skipped:', jobsErr?.message || dirErr?.message);
+    }
+  } catch (e) {
+    console.warn('[db] Supabase not configured — in-memory store only.');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Seed demo auth accounts only
+// ---------------------------------------------------------------------------
+const HASH_ROUNDS = 10;
 
 async function seedDemoAccounts() {
+  await wipeSupabaseDemoData();
+
   for (const d of DEMO_ACCOUNTS) {
     const key = d.email.toLowerCase();
-    if (users.has(key)) continue; // idempotent — safe to call multiple times
+    if (users.has(key)) continue;
 
     const passwordHash = await bcrypt.hash(d.password, HASH_ROUNDS);
     users.set(key, {
@@ -87,15 +122,24 @@ async function seedDemoAccounts() {
       preferredLanguage: 'en',
     });
   }
-  console.log(`[db] In-memory store ready — ${users.size} accounts seeded.`);
+
+  console.log(
+    `[db] Ready — ${users.size} auth accounts | ` +
+    `${directoryProfiles.length} listings | ${jobsBoard.length} jobs | ${reviews.length} reviews`
+  );
 }
 
-// Kick off async seeding immediately (server.js awaits via the exported promise)
 const seedPromise = seedDemoAccounts().catch((err) =>
   console.error('[db] Seed error:', err.message)
 );
 
-// ---------------------------------------------------------------------------
-// Exports
-// ---------------------------------------------------------------------------
-module.exports = { users, stableId, newId, today, seedPromise };
+module.exports = {
+  users,
+  reviews,
+  directoryProfiles,
+  jobsBoard,
+  stableId,
+  newId,
+  today,
+  seedPromise,
+};

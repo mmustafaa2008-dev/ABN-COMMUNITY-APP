@@ -25,20 +25,25 @@ const CATEGORY_COLORS: Record<JobCategory, string> = {
 };
 
 interface JobManagementScreenProps {
-  onBack: () => void;
+  /** When embedded in Account tab — hides leave-screen back nav */
+  embedded?: boolean;
+  onBack?: () => void;
 }
 
-export const JobManagementScreen: React.FC<JobManagementScreenProps> = ({ onBack }) => {
+export const JobManagementScreen: React.FC<JobManagementScreenProps> = ({ embedded = false, onBack }) => {
   const {
     language, currentUser, businesses, jobs,
     addJob, updateJob, deleteJob,
-    hiringActive, apiToken, refreshDirectory,
+    hiringActive, apiToken, refreshDirectory, ensureBusinessListing,
   } = useDirectory();
   const t = TRANSLATIONS[language];
 
   const myBusiness = businesses.find((b) => b.ownerId === currentUser?.id || b.ownerId === currentUser?.email);
-  const myJobs = jobs.filter((j) => j.businessId === myBusiness?.id);
-  const isHiring = myBusiness ? (hiringActive[myBusiness.id] ?? false) : false;
+  const businessForHiring = myBusiness ?? businesses.find(
+    (b) => b.ownerId === currentUser?.id || b.ownerId === currentUser?.email,
+  );
+  const isHiring = businessForHiring ? (hiringActive[businessForHiring.id] ?? false) : false;
+  const myJobs = jobs.filter((j) => j.businessId === businessForHiring?.id);
 
   const [view,       setView]       = useState<'list' | 'form'>('list');
   const [editingJob, setEditingJob] = useState<Job | null>(null);
@@ -69,7 +74,11 @@ export const JobManagementScreen: React.FC<JobManagementScreenProps> = ({ onBack
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
-    if (!myBusiness) { setFormError('No business profile found.'); return; }
+    let activeBusiness = myBusiness;
+    if (!activeBusiness) {
+      activeBusiness = await ensureBusinessListing();
+    }
+    if (!activeBusiness) { setFormError('No business profile found.'); return; }
     if (!formTitle.trim()) { setFormError('Job title is required.'); return; }
     if (!formEmail.trim() || !formEmail.includes('@')) { setFormError('A valid hiring email is required.'); return; }
     const min = parseInt(formSalaryMin, 10);
@@ -97,7 +106,38 @@ export const JobManagementScreen: React.FC<JobManagementScreenProps> = ({ onBack
           }),
         });
         if (res.ok) {
-          await refreshDirectory(); // pull updated jobs from Supabase
+          const saved = await res.json();
+          const mapped: Job = {
+            id:               String(saved.id ?? editingJob?.id ?? `job-${Date.now()}`),
+            businessId:       String(saved.businessId ?? activeBusiness.id),
+            businessName:     String(saved.businessName ?? activeBusiness.name),
+            businessLogoUrl:  String(saved.businessLogoUrl ?? activeBusiness.logoUrl),
+            title:            String(saved.title ?? formTitle.trim()),
+            category:         (saved.category ?? formCategory) as JobCategory,
+            requirements:     String(saved.requirements ?? formRequirements.trim()),
+            salaryMin:        Number(saved.salaryMin ?? min),
+            salaryMax:        Number(saved.salaryMax ?? max),
+            hiringEmail:      String(saved.hiringEmail ?? formEmail.trim()),
+            postedDate:       String(saved.postedDate ?? new Date().toISOString().split('T')[0]),
+            isActive:         saved.isActive !== false,
+          };
+          if (editingJob) {
+            updateJob(mapped);
+          } else {
+            addJob({
+              businessId: mapped.businessId,
+              businessName: mapped.businessName,
+              businessLogoUrl: mapped.businessLogoUrl,
+              title: mapped.title,
+              category: mapped.category,
+              requirements: mapped.requirements,
+              salaryMin: mapped.salaryMin,
+              salaryMax: mapped.salaryMax,
+              hiringEmail: mapped.hiringEmail,
+              isActive: mapped.isActive,
+            });
+          }
+          await refreshDirectory();
           setFormSuccess(editingJob ? 'Job updated!' : 'Job posted!');
           setIsLoading(false);
           setTimeout(() => { setView('list'); setFormSuccess(''); }, 1100);
@@ -112,8 +152,8 @@ export const JobManagementScreen: React.FC<JobManagementScreenProps> = ({ onBack
 
     // ── Fallback: local state (works offline / without backend) ─────────
     const jobData = {
-      businessId: myBusiness.id, businessName: myBusiness.name,
-      businessLogoUrl: myBusiness.logoUrl, title: formTitle.trim(),
+      businessId: activeBusiness.id, businessName: activeBusiness.name,
+      businessLogoUrl: activeBusiness.logoUrl, title: formTitle.trim(),
       category: formCategory, requirements: formRequirements.trim(),
       salaryMin: min, salaryMax: max, hiringEmail: formEmail.trim(),
       isActive: isHiring,
@@ -157,7 +197,7 @@ export const JobManagementScreen: React.FC<JobManagementScreenProps> = ({ onBack
             <h2 className="text-sm font-extrabold text-[#F4E3D7]">
               {editingJob ? (language === 'en' ? 'Edit Job Posting' : 'تعديل إعلان الوظيفة') : (language === 'en' ? 'Post a New Job' : 'نشر وظيفة جديدة')}
             </h2>
-            <p className="text-[9px] text-gray-500">{myBusiness?.name}</p>
+            <p className="text-[9px] text-gray-500">{businessForHiring?.name ?? currentUser?.name}</p>
           </div>
         </div>
 
@@ -277,34 +317,59 @@ export const JobManagementScreen: React.FC<JobManagementScreenProps> = ({ onBack
 
   // ── LIST VIEW ─────────────────────────────────────────────────
   return (
-    <div className="space-y-5" id="job-management-list">
-      <div className="flex items-center gap-3 pb-3 border-b border-[#2D2319]">
-        <button
-          onClick={onBack}
-          className="p-2 rounded-full bg-[#191613] hover:bg-[#2D251C] border border-[#2D2319] transition-colors"
-          aria-label="Back"
-        >
-          <ArrowLeft className="w-4 h-4 text-[#FFA048]" />
-        </button>
-        <div className="flex-1 min-w-0">
-          <h2 className="text-sm font-extrabold text-[#F4E3D7]">
-            {language === 'en' ? '💼 Job Openings' : '💼 الوظائف المتاحة'}
-          </h2>
-          <p className="text-[9px] text-gray-500">
-            {myBusiness?.name} · {myJobs.length} {language === 'en' ? `posting${myJobs.length !== 1 ? 's' : ''}` : 'إعلان'}
-          </p>
-        </div>
-        {isHiring && (
+    <div className={`space-y-4 ${embedded ? '' : 'space-y-5'}`} id="job-management-list">
+      {!embedded && (
+        <div className="flex items-center gap-3 pb-3 border-b border-[#2D2319]">
           <button
-            onClick={openNewForm}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#FFA048] text-black text-xs font-extrabold transition-all hover:bg-opacity-90 flex-shrink-0"
-            id="btn-add-new-job"
+            onClick={onBack}
+            className="p-2 rounded-full bg-[#191613] hover:bg-[#2D251C] border border-[#2D2319] transition-colors"
+            aria-label="Back"
           >
-            <Plus className="w-3.5 h-3.5" />
-            {language === 'en' ? 'New Job' : 'وظيفة'}
+            <ArrowLeft className="w-4 h-4 text-[#FFA048]" />
           </button>
-        )}
-      </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-sm font-extrabold text-[#F4E3D7]">
+              {language === 'en' ? '💼 Job Openings' : '💼 الوظائف المتاحة'}
+            </h2>
+            <p className="text-[9px] text-gray-500">
+              {businessForHiring?.name ?? currentUser?.name} · {myJobs.length} {language === 'en' ? `posting${myJobs.length !== 1 ? 's' : ''}` : 'إعلان'}
+            </p>
+          </div>
+          {isHiring && (
+            <button
+              onClick={openNewForm}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#FFA048] text-black text-xs font-extrabold transition-all hover:bg-opacity-90 flex-shrink-0"
+              id="btn-add-new-job"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              {language === 'en' ? 'New Job' : 'وظيفة'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {embedded && (
+        <div className="flex items-center justify-between gap-2 pb-1">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold text-[#FFA048] uppercase tracking-wider">
+              {language === 'en' ? 'Manage Job Openings' : 'إدارة الوظائف'}
+            </p>
+            <p className="text-[9px] text-gray-500 truncate">
+              {businessForHiring?.name ?? currentUser?.name} · {myJobs.length} {language === 'en' ? `posting${myJobs.length !== 1 ? 's' : ''}` : 'إعلان'}
+            </p>
+          </div>
+          {isHiring && (
+            <button
+              onClick={openNewForm}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#FFA048] text-black text-[10px] font-extrabold transition-all hover:bg-opacity-90 flex-shrink-0"
+              id="btn-add-new-job-inline"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              {language === 'en' ? 'New Job' : 'وظيفة'}
+            </button>
+          )}
+        </div>
+      )}
 
       {!isHiring && (
         <div className="p-4 rounded-2xl bg-amber-950/30 border border-amber-700/30 flex items-start gap-3">
@@ -315,8 +380,8 @@ export const JobManagementScreen: React.FC<JobManagementScreenProps> = ({ onBack
             </p>
             <p className="text-[10px] text-gray-500 mt-0.5">
               {language === 'en'
-                ? 'Turn on the "Hiring Active" toggle in your Account tab to activate job postings publicly.'
-                : 'قم بتفعيل خيار "التوظيف نشط" في تبويب حسابك لنشر الإعلانات.'}
+                ? 'Turn on "Hiring Active" below to publish job openings on the home feed.'
+                : 'فعّل "التوظيف نشط" أدناه لنشر الوظائف على الصفحة الرئيسية.'}
             </p>
           </div>
         </div>
