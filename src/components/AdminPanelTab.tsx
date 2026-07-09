@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useDirectory } from '../context/DirectoryContext';
+import { apiFetch } from '../lib/api';
 import { TRANSLATIONS } from '../data/translations';
 import {
   ShieldAlert,
@@ -19,6 +20,12 @@ import {
   X
 } from 'lucide-react';
 import { Business, Category } from '../types';
+import {
+  calculatePlatformRevenue,
+  formatUsd,
+  getActivePaidListings,
+} from '../utils/platformStats';
+import { isPendingSubmission } from '../utils/listingAccess';
 
 export const AdminPanelTab: React.FC = () => {
   const {
@@ -30,7 +37,9 @@ export const AdminPanelTab: React.FC = () => {
     addCategory,
     removeCategory,
     updateBusiness,
-    removeBusiness
+    removeBusiness,
+    apiToken,
+    refreshDirectory,
   } = useDirectory();
   const t = TRANSLATIONS[language];
 
@@ -54,6 +63,16 @@ export const AdminPanelTab: React.FC = () => {
   // Is current logged in user an admin?
   const isAdmin = currentUser?.role === 'admin';
 
+  const activePaidListings = useMemo(
+    () => getActivePaidListings(businesses),
+    [businesses],
+  );
+
+  const platformRevenue = useMemo(
+    () => calculatePlatformRevenue(businesses),
+    [businesses],
+  );
+
   if (!isAdmin) {
     return (
       <div className="p-8 text-center rounded-3xl bg-[#13110E] border border-red-950/40 text-gray-400" id="admin-forbidden-state">
@@ -72,10 +91,27 @@ export const AdminPanelTab: React.FC = () => {
   }
 
   // Vetting triggers
-  const handleApproveVetting = (biz: Business) => {
-    const approved: Business = { ...biz, isVerified: true };
+  const handleApproveVetting = async (biz: Business) => {
+    const approved: Business = { ...biz, isVerified: true, status: 'active' };
     updateBusiness(approved);
-    alert(language === 'en' ? `Vetting completed: ${biz.name} is now VERIFIED` : `تم توثيق ${biz.name} بنجاح كنشاط مجتمعي معتمد.`);
+
+    if (apiToken) {
+      try {
+        await apiFetch(`/api/directory/${biz.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiToken}`,
+          },
+          body: JSON.stringify({ isVerified: true, subscriptionStatus: 'active' }),
+        });
+        await refreshDirectory();
+      } catch {
+        console.warn('[ABN Admin] Could not sync listing approval to server.');
+      }
+    }
+
+    alert(language === 'en' ? `Vetting completed: ${biz.name} is now live in the directory.` : `تم توثيق ${biz.name} بنجاح وأصبح مرئياً في الدليل.`);
   };
 
   // Toggle membership status manually between Active & Suspended (to test search visibility instantly!)
@@ -194,12 +230,12 @@ export const AdminPanelTab: React.FC = () => {
             <div className="bg-[#1C1914] border border-[#2D2319] p-4 rounded-2xl relative overflow-hidden">
               <DollarSign className="w-10 h-10 text-[#FFA048] absolute right-3 top-3 opacity-10" />
               <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-1">Platform Revenue</p>
-              <h3 className="text-xl font-black text-white">${(payments.length * 50).toLocaleString()}</h3>
+              <h3 className="text-xl font-black text-white">{formatUsd(platformRevenue)}</h3>
             </div>
             <div className="bg-[#1C1914] border border-[#2D2319] p-4 rounded-2xl relative overflow-hidden">
               <Award className="w-10 h-10 text-green-500 absolute right-3 top-3 opacity-10" />
               <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-1">Active Subs</p>
-              <h3 className="text-xl font-black text-green-400">{businesses.filter(b => b.status === 'active').length}</h3>
+              <h3 className="text-xl font-black text-green-400">{activePaidListings.length}</h3>
             </div>
           </div>
 
@@ -265,7 +301,7 @@ export const AdminPanelTab: React.FC = () => {
                 const expiry = new Date(biz.membershipExpiryDate);
                 const isExpiredDate = expiry < today;
                 
-                if (bizFilter === 'submissions') return !biz.isVerified && biz.status !== 'suspended';
+                if (bizFilter === 'submissions') return isPendingSubmission(biz);
                 if (bizFilter === 'active') return biz.status === 'active' && biz.isVerified;
                 if (bizFilter === 'pending') return biz.status === 'pending' && biz.isVerified;
                 if (bizFilter === 'expired') return (biz.status === 'suspended' || isExpiredDate) && biz.isVerified;
@@ -373,17 +409,17 @@ export const AdminPanelTab: React.FC = () => {
             {[
               {
                 label: language === 'en' ? 'Total Revenue' : 'إجمالي الإيرادات',
-                value: `$${payments.filter(p => p.status === 'success').reduce((sum, p) => sum + p.amount, 0)}.00`,
+                value: formatUsd(platformRevenue),
                 color: 'text-green-400'
               },
               {
                 label: language === 'en' ? 'Total Transactions' : 'عدد المعاملات',
-                value: payments.length,
+                value: payments.filter((p) => p.status === 'success').length,
                 color: 'text-[#FFA048]'
               },
               {
                 label: language === 'en' ? 'Active Listings' : 'نشاطات نشطة',
-                value: businesses.filter(b => b.status === 'active').length,
+                value: activePaidListings.length,
                 color: 'text-blue-400'
               }
             ].map(({ label, value, color }) => (

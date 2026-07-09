@@ -3,6 +3,7 @@ import { useDirectory } from '../context/DirectoryContext';
 import { TRANSLATIONS } from '../data/translations';
 import { Search, MapPin, ArrowLeft, CheckCircle, Clock } from 'lucide-react';
 import { Business } from '../types';
+import { isLiveDirectoryListing } from '../utils/listingAccess';
 
 interface SearchTabProps {
   initialQuery?: string;
@@ -120,7 +121,7 @@ export const SearchTab: React.FC<SearchTabProps> = ({
   // Memoized filter logic — runs only when debounced query or filters change
   const filteredBusinesses = useMemo(() => {
     return businesses.filter((biz) => {
-      if (biz.status !== 'active') return false;
+      if (!isLiveDirectoryListing(biz)) return false;
 
       const q = debouncedQuery.toLowerCase().trim();
       const matchQuery =

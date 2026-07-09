@@ -19,6 +19,7 @@ export interface Category {
 }
 
 export type BusinessStatus = 'active' | 'suspended' | 'pending';
+export type ListingType = 'business' | 'service';
 
 export interface Business {
   id: string;
@@ -29,6 +30,7 @@ export interface Business {
   description: { en: string; ar: string };
   categoryId: string;
   subcategory: { en: string; ar: string };
+  listingType?: ListingType;
   address: string;
   city: 'New York' | 'Los Angeles' | 'Chicago' | 'Houston' | 'Miami' | 'Dearborn' | 'Dallas';
   area: string;
@@ -39,6 +41,7 @@ export interface Business {
   website?: string;
   workingHours: { en: string; ar: string };
   membershipExpiryDate: string; // ISO date string
+  subscriptionTier?: 30 | 50;
   gallery: string[];
   rating: number; // calculated from reviews or static
   reviewsCount: number;

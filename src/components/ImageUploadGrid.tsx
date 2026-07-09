@@ -14,6 +14,8 @@ interface ImageUploadGridProps {
   language: 'en' | 'ar' | 'fa';
   label?: string;
   id?: string;
+  required?: boolean;
+  errorMessage?: string | null;
 }
 
 export const ImageUploadGrid: React.FC<ImageUploadGridProps> = ({
@@ -22,6 +24,8 @@ export const ImageUploadGrid: React.FC<ImageUploadGridProps> = ({
   language,
   label,
   id = 'image-upload-grid',
+  required = false,
+  errorMessage = null,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toastTimerRef = useRef<number | null>(null);
@@ -119,10 +123,17 @@ export const ImageUploadGrid: React.FC<ImageUploadGridProps> = ({
       {label && (
         <label className="block text-xs text-gray-400 mb-2">
           {label}
+          {required && <span className="text-[#FFA048] ml-0.5">*</span>}
           <span className="ml-1 text-[10px] text-gray-600">
             ({images.length}/{MAX_UPLOAD_IMAGES})
           </span>
         </label>
+      )}
+
+      {errorMessage && (
+        <p className="mb-2 text-[10px] font-bold text-red-400" role="alert">
+          {errorMessage}
+        </p>
       )}
 
       <div className="grid grid-cols-5 gap-2" id={`${id}-grid`}>
@@ -137,7 +148,7 @@ export const ImageUploadGrid: React.FC<ImageUploadGridProps> = ({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 className={`aspect-square rounded-xl bg-[#0F0E0C] border-2 border-dashed flex flex-col items-center justify-center gap-1 transition-all ${
-                  addSlotFlash
+                  addSlotFlash || (required && images.length === 0 && errorMessage)
                     ? 'border-red-500/70 bg-red-950/20'
                     : 'border-[#2D2319] hover:border-[#FFA048]/50'
                 }`}

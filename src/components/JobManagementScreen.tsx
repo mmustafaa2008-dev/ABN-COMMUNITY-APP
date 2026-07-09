@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useDirectory } from '../context/DirectoryContext';
+import { apiFetch } from '../lib/api';
 import { TRANSLATIONS } from '../data/translations';
 import { Job, JobCategory } from '../types';
 import {
@@ -95,7 +96,7 @@ export const JobManagementScreen: React.FC<JobManagementScreenProps> = ({ embedd
       try {
         const url    = editingJob ? `/api/jobsboard/${editingJob.id}` : '/api/jobsboard';
         const method = editingJob ? 'PUT' : 'POST';
-        const res = await fetch(url, {
+        const res = await apiFetch(url, {
           method,
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiToken}` },
           body: JSON.stringify({
@@ -170,7 +171,7 @@ export const JobManagementScreen: React.FC<JobManagementScreenProps> = ({ embedd
     // ── Try live API first ──────────────────────────────────────────────
     if (apiToken) {
       try {
-        const res = await fetch(`/api/jobsboard/${jobId}`, {
+        const res = await apiFetch(`/api/jobsboard/${jobId}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${apiToken}` },
         });

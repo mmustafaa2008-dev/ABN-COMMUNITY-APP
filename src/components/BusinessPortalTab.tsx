@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useDirectory } from '../context/DirectoryContext';
+import { apiFetch } from '../lib/api';
 import { TRANSLATIONS } from '../data/translations';
 import { ImageUploadGrid } from './ImageUploadGrid';
 import {
@@ -26,6 +27,16 @@ import {
   Zap,
 } from 'lucide-react';
 import { Business, PaymentRecord } from '../types';
+import { US_STATES } from '../data/usStates';
+import {
+  formatUSPhoneInput,
+  formatZipInput,
+  formatOtpInput,
+  isValidUSPhone,
+  normalizeUSPhone,
+  validateDirectoryRegistration,
+} from '../utils/businessRegistrationValidation';
+import { canManageListing, getUserListing, listingKind } from '../utils/listingAccess';
 
 const DEFAULT_LOGO = 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=200&h=200';
 const DEFAULT_COVER = 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?auto=format&fit=crop&q=80&w=1200&h=400';
@@ -37,11 +48,16 @@ const buildListingImages = (gallery: string[] | undefined, logoUrl?: string): st
 };
 
 interface BusinessPortalTabProps {
-  onOpenAuth: () => void;
   onBack?: () => void;
+  manageMode?: boolean;
+  registrationOnly?: boolean;
 }
 
-export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth, onBack }) => {
+export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({
+  onBack,
+  manageMode = false,
+  registrationOnly = false,
+}) => {
   const {
     language,
     currentUser,
@@ -55,17 +71,17 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
     refreshDirectory,
   } = useDirectory();
 
-  // Derive plan price by role
-  const planAmount = currentUser?.role === 'service_provider' ? 30 : 50;
+  // Derive plan price by listing type
+  const myBusiness = getUserListing(currentUser, businesses);
+  const kind = listingKind(myBusiness);
+  const planAmount = kind === 'service' ? 30 : 50;
   const t = TRANSLATIONS[language];
 
   // Forms Toggle / Tab
   const [activePortalTab, setActivePortalTab] = useState<'dash' | 'edit' | 'pay'>('dash');
 
   // Find business registered to current owner
-  const myBusiness = businesses.find((b) =>
-    b.ownerId === (currentUser?.id || '') || b.ownerId === (currentUser?.email || '')
-  );
+  const [isSavingManage, setIsSavingManage] = useState(false);
 
   // Registration Flow State
   const [registrationType, setRegistrationType] = useState<'business' | 'service' | null>(null);
@@ -73,19 +89,67 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
   // Registration Form State
   const [regName, setRegName] = useState('');
   const [regCatId, setRegCatId] = useState(categories[0]?.id || '');
-  const [regSubcat, setRegSubcat] = useState('');
   const [regDesc, setRegDesc] = useState('');
+  const [regState, setRegState] = useState('');
+  const [regCity, setRegCity] = useState('');
+  const [regZipCode, setRegZipCode] = useState('');
   const [regAddress, setRegAddress] = useState('');
-  const [regArea, setRegArea] = useState('');
-  const [regCity, setRegCity] = useState<'Baghdad' | 'Najaf' | 'Karbala' | 'Basra' | 'Erbil'>('Baghdad');
   const [regPhone, setRegPhone] = useState('');
   const [regWhatsapp, setRegWhatsapp] = useState('');
   const [regWeb, setRegWeb] = useState('');
   const [regHours, setRegHours] = useState('8:00 AM - 10:00 PM');
   const [regImages, setRegImages] = useState<string[]>([]);
-  const [regCover, setRegCover] = useState('');
   const [regSuccess, setRegSuccess] = useState('');
   const [regError, setRegError] = useState('');
+  const [regPhotoError, setRegPhotoError] = useState('');
+  const [regOtp, setRegOtp] = useState('');
+  const [regOtpSent, setRegOtpSent] = useState(false);
+  const [regOtpNotice, setRegOtpNotice] = useState('');
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [isSubmittingReg, setIsSubmittingReg] = useState(false);
+  const [showApprovalNotice, setShowApprovalNotice] = useState(false);
+
+  const isRegPhoneValid = React.useMemo(() => isValidUSPhone(regPhone), [regPhone]);
+
+  React.useEffect(() => {
+    setRegOtp('');
+    setRegOtpSent(false);
+    setRegOtpNotice('');
+  }, [regPhone]);
+
+  React.useEffect(() => {
+    if (!registrationType) return;
+    if (registrationType === 'service') {
+      const serviceCat = categories.find((c) => c.group === 'Services');
+      if (serviceCat) setRegCatId(serviceCat.id);
+    } else {
+      setRegCatId(categories[0]?.id || '');
+    }
+  }, [registrationType, categories]);
+
+  // Pre-fill onboarding form when managing an approved listing
+  React.useEffect(() => {
+    if (!manageMode || !myBusiness) return;
+    const listingKindValue = listingKind(myBusiness);
+    setRegistrationType(listingKindValue);
+    setRegName(myBusiness.name);
+    setRegDesc(myBusiness.description[language] || myBusiness.description.en);
+    setRegState(myBusiness.subcategory.en || '');
+    setRegCity(String(myBusiness.city || ''));
+    setRegZipCode(myBusiness.area || '');
+    setRegAddress(myBusiness.address || '');
+    setRegPhone(myBusiness.phone || '');
+    setRegWhatsapp(myBusiness.whatsapp || '');
+    setRegWeb(myBusiness.website || '');
+    setRegHours(myBusiness.workingHours[language] || myBusiness.workingHours.en || '');
+    setRegImages(buildListingImages(myBusiness.gallery, myBusiness.logoUrl));
+    if (listingKindValue === 'service') {
+      const serviceCat = categories.find((c) => c.group === 'Services');
+      if (serviceCat) setRegCatId(serviceCat.id);
+    } else if (myBusiness.categoryId) {
+      setRegCatId(myBusiness.categoryId);
+    }
+  }, [manageMode, myBusiness?.id, language, categories]);
 
   // ── Bug #3 Fix: Edit form state — initialized empty, populated via useEffect ──
   const [editName, setEditName] = useState('');
@@ -156,47 +220,265 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
     return null;
   }, [myBusiness?.membershipExpiryDate]);
 
-  if (!currentUser) {
-    return (
-      <div className="text-center py-16 px-6" id="portal-unauth-view">
-        <div className="w-16 h-16 rounded-full bg-[#191613] hover:bg-[#2A231C] border border-[#2D2319] flex items-center justify-center text-[#FFA048] mx-auto mb-4">
-          <Briefcase className="w-8 h-8" />
-        </div>
-        <h3 className="text-lg font-black text-white">{t.businessPortal}</h3>
-        <p className="text-xs text-gray-400 mt-2 max-w-sm mx-auto leading-relaxed">
-          {language === 'en'
-            ? 'Sign in with your Business or Service Provider account to list your shop, update service operations, or manage your monthly membership.'
-            : 'سجل الدخول بحساب شريك الدليل لتسجيل عملك وإدارته وتفعيل اشتراكك الشهري.'}
-        </p>
-        <button
-          onClick={onOpenAuth}
-          className="mt-6 px-6 py-2.5 bg-[#FFA048] text-black font-extrabold text-sm rounded-xl transition-all shadow-[0_0_15px_rgba(255,160,72,0.4)] hover:shadow-[0_0_20px_rgba(255,160,72,0.6)] active:scale-95"
-          id="portal-btn-signdemo"
-        >
-          {t.signIn}
-        </button>
-      </div>
-    );
-  }
-
   // Handle registration submission
-  const handleRegisterSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!regName || !regSubcat || !regDesc || !regAddress || !regPhone || !regWhatsapp) {
-      setRegError(t.allFieldsRequired);
+  const handleSendOtp = async () => {
+    if (!isRegPhoneValid) {
+      setRegError(t.phoneInvalid);
+      return;
+    }
+    if (!apiToken) {
+      setRegError(t.phoneVerificationRequired);
       return;
     }
 
-    const defaultLogo = regImages[0] || DEFAULT_LOGO;
-    const defaultCover = regImages[1] || regCover || DEFAULT_COVER;
-    const gallery = regImages.length > 0 ? regImages : [defaultCover];
-    const cat = categories.find((c) => c.id === regCatId);
-    const categoryLabel = cat?.name.en || regSubcat;
+    setIsSendingOtp(true);
+    setRegError('');
+    setRegOtpNotice('');
 
-    if (apiToken && currentUser) {
+    try {
+      const res = await apiFetch('/api/verification/send-otp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiToken}`,
+        },
+        body: JSON.stringify({ phone: `+${normalizeUSPhone(regPhone)}` }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setRegError(data.error || t.otpInvalid);
+        return;
+      }
+
+      setRegOtpSent(true);
+      setRegOtp('');
+      const demoHint = data.demoOtp
+        ? (language === 'en' ? ` Demo code: ${data.demoOtp}` : ` رمز تجريبي: ${data.demoOtp}`)
+        : '';
+      setRegOtpNotice(`${t.otpSent}${demoHint}`);
+    } catch {
+      setRegError(language === 'en' ? 'Could not reach verification service.' : 'تعذر الاتصال بخدمة التحقق.');
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!registrationType) return;
+    setRegPhotoError('');
+
+    const isServiceReg = registrationType === 'service';
+    const photoRequiredMsg = isServiceReg ? t.servicePhotoRequired : t.photoRequired;
+
+    const validationError = validateDirectoryRegistration(
+      {
+        name: regName,
+        description: regDesc,
+        state: regState,
+        city: regCity,
+        zipCode: regZipCode,
+        address: regAddress,
+        operatingHours: regHours,
+        phone: regPhone,
+        whatsapp: regWhatsapp,
+        images: regImages,
+        kind: registrationType || 'business',
+      },
+      {
+        allFieldsRequired: t.allFieldsRequired,
+        photoRequired: photoRequiredMsg,
+        phoneInvalid: t.phoneInvalid,
+        zipInvalid: t.zipInvalid,
+        stateRequired: t.stateRequired,
+        hoursRequired: t.hoursRequired,
+        otpRequired: t.otpRequired,
+        phoneVerificationRequired: t.phoneVerificationRequired,
+      },
+    );
+
+    if (validationError) {
+      if (validationError === photoRequiredMsg) setRegPhotoError(validationError);
+      setRegError(validationError);
+      return;
+    }
+
+    if (!regOtp.trim()) {
+      setRegError(t.otpRequired);
+      return;
+    }
+
+    if (!apiToken) {
+      setRegError(t.phoneVerificationRequired);
+      return;
+    }
+
+    const normalizedPhone = normalizeUSPhone(regPhone);
+    const formattedPhone = `+${normalizedPhone}`;
+
+    setIsSubmittingReg(true);
+    setRegError('');
+
+    const defaultLogo = regImages[0];
+    const defaultCover = regImages[0];
+    const gallery = regImages;
+    const cat = categories.find((c) => c.id === regCatId);
+    const categoryLabel = cat?.name.en || 'General';
+
+    try {
+      const verifyRes = await apiFetch('/api/verification/verify-otp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiToken}`,
+        },
+        body: JSON.stringify({ phone: formattedPhone, code: regOtp.trim() }),
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok) {
+        setRegError(verifyData.error || t.otpInvalid);
+        return;
+      }
+
+      const res = await apiFetch('/api/directory', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiToken}`,
+        },
+        body: JSON.stringify({
+          businessName: regName,
+          category: categoryLabel,
+          description: regDesc,
+          imageUrl: defaultLogo,
+          coverUrl: defaultCover,
+          address: regAddress,
+          area: regZipCode,
+          city: regCity,
+          phone: formattedPhone,
+          whatsapp: regWhatsapp.trim() || formattedPhone,
+          website: regWeb,
+          workingHours: regHours,
+          subscriptionTier: registrationType === 'service' ? 30 : 50,
+          listingType: registrationType,
+          state: regState,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setRegError(data.error || t.allFieldsRequired);
+        return;
+      }
+
+      const newBiz: Business = {
+        id: String(data.id ?? `biz-${Date.now()}`),
+        ownerId: currentUser!.email,
+        name: regName,
+        logoUrl: defaultLogo,
+        coverUrl: defaultCover,
+        description: { en: regDesc, ar: regDesc },
+        categoryId: regCatId,
+        subcategory: { en: regState, ar: regState },
+        listingType: registrationType || 'business',
+        address: regAddress,
+        city: regCity as Business['city'],
+        area: regZipCode,
+        isVerified: false,
+        status: 'pending',
+        phone: formattedPhone,
+        whatsapp: regWhatsapp.trim() || formattedPhone,
+        website: regWeb,
+        workingHours: { en: regHours, ar: regHours },
+        membershipExpiryDate: String(data.membershipExpiry ?? new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]),
+        subscriptionTier: registrationType === 'service' ? 30 : 50,
+        gallery,
+        rating: 0,
+        reviewsCount: 0,
+      };
+      addBusiness(newBiz);
+      await refreshDirectory();
+      setShowApprovalNotice(true);
+      setRegError('');
+      setRegPhotoError('');
+    } catch {
+      setRegError(language === 'en' ? 'Could not complete registration. Please try again.' : 'تعذر إكمال التسجيل. يرجى المحاولة مرة أخرى.');
+    } finally {
+      setIsSubmittingReg(false);
+    }
+  };
+
+  const handleManageSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!myBusiness || !registrationType) return;
+    setRegPhotoError('');
+
+    const isServiceReg = registrationType === 'service';
+    const photoRequiredMsg = isServiceReg ? t.servicePhotoRequired : t.photoRequired;
+
+    const validationError = validateDirectoryRegistration(
+      {
+        name: regName,
+        description: regDesc,
+        state: regState,
+        city: regCity,
+        zipCode: regZipCode,
+        address: regAddress,
+        operatingHours: regHours,
+        phone: regPhone,
+        whatsapp: regWhatsapp,
+        images: regImages,
+        kind: registrationType,
+      },
+      {
+        allFieldsRequired: t.allFieldsRequired,
+        photoRequired: photoRequiredMsg,
+        phoneInvalid: t.phoneInvalid,
+        zipInvalid: t.zipInvalid,
+        stateRequired: t.stateRequired,
+        hoursRequired: t.hoursRequired,
+        otpRequired: t.otpRequired,
+        phoneVerificationRequired: t.phoneVerificationRequired,
+      },
+    );
+
+    if (validationError) {
+      if (validationError === photoRequiredMsg) setRegPhotoError(validationError);
+      setRegError(validationError);
+      return;
+    }
+
+    const cat = categories.find((c) => c.id === regCatId);
+    const categoryLabel = cat?.name.en || myBusiness.subcategory.en;
+    const defaultLogo = regImages[0] || myBusiness.logoUrl;
+    const formattedPhone = isValidUSPhone(regPhone) ? `+${normalizeUSPhone(regPhone)}` : regPhone.trim();
+
+    setIsSavingManage(true);
+    setRegError('');
+
+    const updatedBiz: Business = {
+      ...myBusiness,
+      name: regName,
+      description: { en: regDesc, ar: language === 'ar' ? regDesc : myBusiness.description.ar },
+      subcategory: { en: regState, ar: regState },
+      categoryId: regCatId,
+      address: regAddress,
+      city: regCity as Business['city'],
+      area: regZipCode,
+      phone: formattedPhone,
+      whatsapp: regWhatsapp.trim() || formattedPhone,
+      website: regWeb,
+      workingHours: { en: regHours, ar: language === 'ar' ? regHours : myBusiness.workingHours.ar },
+      logoUrl: defaultLogo,
+      coverUrl: regImages[0] || myBusiness.coverUrl,
+      gallery: regImages.length > 0 ? regImages : myBusiness.gallery,
+    };
+
+    updateBusiness(updatedBiz);
+
+    if (apiToken) {
       try {
-        const res = await fetch('/api/directory', {
-          method: 'POST',
+        await apiFetch(`/api/directory/${myBusiness.id}`, {
+          method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${apiToken}`,
@@ -205,100 +487,27 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
             businessName: regName,
             category: categoryLabel,
             description: regDesc,
-            imageUrl: defaultLogo,
-            coverUrl: defaultCover,
             address: regAddress,
-            area: regArea || 'Baghdad',
+            area: regZipCode,
             city: regCity,
-            phone: regPhone,
-            whatsapp: regWhatsapp,
+            phone: formattedPhone,
+            whatsapp: regWhatsapp.trim() || formattedPhone,
             website: regWeb,
             workingHours: regHours,
-            subscriptionTier: planAmount,
+            imageUrl: defaultLogo,
+            coverUrl: regImages[0] || myBusiness.coverUrl,
           }),
         });
-        const data = await res.json();
-        if (!res.ok) {
-          setRegError(data.error || t.allFieldsRequired);
-          return;
-        }
-
-        const newBiz: Business = {
-          id: String(data.id ?? `biz-${Date.now()}`),
-          ownerId: currentUser.email,
-          name: regName,
-          logoUrl: defaultLogo,
-          coverUrl: defaultCover,
-          description: { en: regDesc, ar: regDesc },
-          categoryId: regCatId,
-          subcategory: { en: regSubcat, ar: regSubcat },
-          address: regAddress,
-          city: regCity as Business['city'],
-          area: regArea || 'Baghdad',
-          isVerified: Boolean(data.isVerified),
-          status: 'active',
-          phone: regPhone,
-          whatsapp: regWhatsapp,
-          website: regWeb,
-          workingHours: { en: regHours, ar: regHours },
-          membershipExpiryDate: String(data.membershipExpiry ?? new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]),
-          gallery,
-          rating: 5.0,
-          reviewsCount: 0,
-        };
-        addBusiness(newBiz);
         await refreshDirectory();
-        setRegSuccess(t.registeredSuccessfully);
-        setRegError('');
-        setRegName('');
-        setRegSubcat('');
-        setRegDesc('');
-        setRegAddress('');
-        setRegPhone('');
-        setRegWhatsapp('');
-        setRegWeb('');
-        setTimeout(() => setRegSuccess(''), 5000);
-        return;
       } catch {
-        setRegError(language === 'en' ? 'Could not reach server. Saved locally only.' : 'تعذر الاتصال بالخادم.');
+        console.warn('[ABN] Could not sync listing update to server.');
       }
     }
 
-    const newBiz: Business = {
-      id: `biz-${Date.now()}`,
-      ownerId: currentUser?.email || currentUser?.id || '',
-      name: regName,
-      logoUrl: defaultLogo,
-      coverUrl: defaultCover,
-      description: { en: regDesc, ar: regDesc },
-      categoryId: regCatId,
-      subcategory: { en: regSubcat, ar: regSubcat },
-      address: regAddress,
-      city: regCity,
-      area: regArea || 'Baghdad',
-      isVerified: false, // Must be approved by administrator
-      status: 'active', // default active upon payment or pending verification
-      phone: regPhone,
-      whatsapp: regWhatsapp,
-      website: regWeb,
-      workingHours: { en: regHours, ar: regHours },
-      membershipExpiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      gallery,
-      rating: 5.0,
-      reviewsCount: 0,
-      // Add custom field or logic to differentiate type? We'll just stick to standard Business for now.
-    };
-
-    addBusiness(newBiz);
-    setRegSuccess(t.registeredSuccessfully);
-    setRegName('');
-    setRegSubcat('');
-    setRegDesc('');
-    setRegAddress('');
-    setRegPhone('');
-    setRegWhatsapp('');
-    setRegWeb('');
-    setTimeout(() => setRegSuccess(''), 5000);
+    setRegSuccess(t.profileUpdated || (language === 'en' ? 'Listing updated successfully!' : 'تم تحديث الإدراج بنجاح!'));
+    setRegError('');
+    setIsSavingManage(false);
+    setTimeout(() => setRegSuccess(''), 4000);
   };
 
   // Profile update submit
@@ -328,7 +537,7 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
 
     if (apiToken) {
       try {
-        await fetch(`/api/directory/${myBusiness.id}`, {
+        await apiFetch(`/api/directory/${myBusiness.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -516,41 +725,129 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
 
   // Filters payments matching current business
   const businessPayments = payments.filter((p) => p.businessId === (myBusiness?.id || ''));
+  const isManageForm = Boolean(manageMode && myBusiness && canManageListing(myBusiness));
+
+  const approvalNoticeModal = showApprovalNotice ? (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+      id="registration-approval-notice"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="approval-notice-title"
+    >
+      <div className="relative w-full max-w-sm rounded-3xl bg-[#13110E] border border-[#2D2319] p-6 text-center shadow-xl">
+        <Clock className="w-10 h-10 text-[#FFA048] mx-auto mb-3" />
+        <h3 id="approval-notice-title" className="text-sm font-black text-white mb-2">
+          Approval Time is 24 hours
+        </h3>
+        <p className="text-[11px] text-gray-400 leading-relaxed mb-5">
+          {language === 'en'
+            ? 'Your submission was received and is pending admin review. It will not appear in public search until approved.'
+            : 'تم استلام طلبك وهو قيد مراجعة المسؤول. لن يظهر في البحث العام حتى الموافقة.'}
+        </p>
+        <button
+          type="button"
+          onClick={() => setShowApprovalNotice(false)}
+          className="w-full py-2.5 rounded-xl bg-[#FFA048] text-black text-xs font-extrabold uppercase tracking-wide"
+          id="btn-dismiss-approval-notice"
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  ) : null;
+
+  const backHeader = onBack ? (
+    <div className="flex items-center gap-3 pb-3 border-b border-[#2D2319]">
+      <button
+        onClick={onBack}
+        className="p-2 rounded-full bg-[#191613] hover:bg-[#2D251C] border border-[#2D2319] transition-colors"
+        aria-label="Back"
+      >
+        <ArrowLeft className="w-4 h-4 text-[#FFA048]" />
+      </button>
+      <div>
+        <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+          {kind === 'service'
+            ? (language === 'en' ? 'Manage Service' : 'إدارة الخدمة')
+            : (language === 'en' ? 'Manage Business' : 'إدارة النشاط التجاري')}
+        </span>
+        {myBusiness && (
+          <h2 className="text-base font-extrabold text-[#F4E3D7] leading-tight flex items-center gap-2">
+            {kind === 'service'
+              ? <Zap className="w-4 h-4 text-blue-400" />
+              : <Briefcase className="w-4 h-4 text-[#FFA048]" />}
+            {myBusiness.name}
+          </h2>
+        )}
+      </div>
+    </div>
+  ) : null;
+
+  if (manageMode && !myBusiness) {
+    return (
+      <>
+        {approvalNoticeModal}
+      <div className="space-y-6" id="portal-manage-empty">
+        {backHeader}
+        <div className="text-center py-12 px-6 rounded-3xl bg-[#13110E] border border-[#2D2319]">
+          <Briefcase className="w-10 h-10 text-gray-600 mx-auto mb-3" />
+          <p className="text-xs text-gray-400">
+            {language === 'en'
+              ? 'No directory listing found for your account yet.'
+              : 'لا يوجد إدراج في الدليل لحسابك بعد.'}
+          </p>
+        </div>
+      </div>
+      </>
+    );
+  }
+
+  if (manageMode && myBusiness && !canManageListing(myBusiness)) {
+    return (
+      <>
+        {approvalNoticeModal}
+      <div className="space-y-6" id="portal-manage-pending">
+        {backHeader}
+        <div className="text-center py-12 px-6 rounded-3xl bg-[#13110E] border border-amber-700/30">
+          <Clock className="w-10 h-10 text-amber-400 mx-auto mb-3" />
+          <h3 className="text-sm font-black text-white mb-2">
+            {kind === 'service' ? t.manageService : t.manageBusiness}
+          </h3>
+          <p className="text-xs text-amber-200/80 max-w-sm mx-auto">{t.listingPending}</p>
+        </div>
+      </div>
+      </>
+    );
+  }
+
+  if (registrationOnly && myBusiness) {
+    return (
+      <>
+        {approvalNoticeModal}
+      <div className="space-y-6" id="portal-registration-blocked">
+        <div className="text-center py-12 px-6 rounded-3xl bg-[#13110E] border border-[#2D2319]">
+          <AlertTriangle className="w-10 h-10 text-[#FFA048] mx-auto mb-3" />
+          <p className="text-xs text-gray-300 max-w-sm mx-auto">
+            {!canManageListing(myBusiness) ? t.listingPending : t.listingExists}
+          </p>
+        </div>
+      </div>
+      </>
+    );
+  }
 
   return (
+    <>
+      {approvalNoticeModal}
     <div className="space-y-6" id="portal-tab-container">
 
       {/* Back navigation header — only rendered when accessed as a sub-page */}
-      {onBack && (
-        <div className="flex items-center gap-3 pb-3 border-b border-[#2D2319]">
-          <button
-            onClick={onBack}
-            className="p-2 rounded-full bg-[#191613] hover:bg-[#2D251C] border border-[#2D2319] transition-colors"
-            aria-label="Back"
-          >
-            <ArrowLeft className="w-4 h-4 text-[#FFA048]" />
-          </button>
-          <div>
-            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
-              {currentUser?.role === 'service_provider'
-                ? (language === 'en' ? 'Service Provider Portal' : 'بوابة مزوّد الخدمة')
-                : (language === 'en' ? 'Business Portal' : 'بوابة صاحب العمل')}
-            </span>
-            {myBusiness && (
-              <h2 className="text-base font-extrabold text-[#F4E3D7] leading-tight flex items-center gap-2">
-                {currentUser?.role === 'service_provider'
-                  ? <Zap className="w-4 h-4 text-blue-400" />
-                  : <Briefcase className="w-4 h-4 text-[#FFA048]" />}
-                {myBusiness.name}
-              </h2>
-            )}
-          </div>
-        </div>
-      )}
+      {backHeader}
 
-      {/* NO REGISTERED BUSINESS: DISPLAY APPLICANT FORM */}
-      {!myBusiness ? (
-        !registrationType ? (
+      {/* NO LISTING (register) OR MANAGE MODE (edit pre-filled onboarding form) */}
+      {!myBusiness || isManageForm ? (
+        !registrationType && !isManageForm ? (
           <div className="space-y-4 animate-fade-in-up" id="portal-registration-selection">
             <div className="pb-1 border-b border-[#2D2319]">
               <h2 className="text-xl font-extrabold text-[#F4E3D7]">
@@ -608,75 +905,96 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
         ) : (
         <div className="space-y-4 animate-fade-in" id="portal-registration-form-section">
           <div className="flex items-center gap-3 pb-1 border-b border-[#2D2319]">
+            {!isManageForm && (
             <button 
-              onClick={() => setRegistrationType(null)} 
+              onClick={() => {
+                setRegistrationType(null);
+                setRegError('');
+                setRegPhotoError('');
+                setRegSuccess('');
+                setRegOtp('');
+                setRegOtpSent(false);
+                setRegOtpNotice('');
+              }}
               className="p-1.5 rounded-full bg-[#191613] hover:bg-[#2D251C] transition-colors border border-[#2D2319]"
             >
               <ArrowRight className="w-4 h-4 text-gray-400 rotate-180" />
             </button>
+            )}
             <div>
               <h2 className="text-xl font-extrabold text-[#F4E3D7]">
-                {registrationType === 'business' ? t.registerBusiness : (language === 'en' ? 'Register Service' : 'سجل كخدمة')}
+                {isManageForm
+                  ? (kind === 'service' ? t.manageService : t.manageBusiness)
+                  : (registrationType === 'business' ? t.registerBusiness : t.registerService)}
               </h2>
               <p className="text-[10px] text-gray-500 font-medium">
-                {language === 'en'
-            ? `Reach Shia community customers directly for $${registrationType === 'business' ? '50' : '30'}/month.`
-            : `انضم لدليل أعمال المجتمع وتواصل مع آلاف الزبائن بقيمة ${registrationType === 'business' ? '50$' : '30$'} شهرياً.`}
+                {isManageForm
+                  ? (language === 'en' ? 'Update your directory listing details below.' : 'حدّث بيانات إدراجك في الدليل أدناه.')
+                  : (language === 'en'
+                    ? `Reach Shia community customers directly for $${registrationType === 'business' ? '50' : '30'}/month.`
+                    : `انضم لدليل أعمال المجتمع وتواصل مع آلاف الزبائن بقيمة ${registrationType === 'business' ? '50$' : '30$'} شهرياً.`)}
               </p>
             </div>
           </div>
 
-          <form onSubmit={handleRegisterSubmit} className="space-y-4 p-5 rounded-3xl bg-[#13110E] border border-[#2D2319]" id="biz-reg-form">
+          <form onSubmit={isManageForm ? handleManageSubmit : handleRegisterSubmit} className="space-y-4 p-5 rounded-3xl bg-[#13110E] border border-[#2D2319]" id={registrationType === 'service' ? 'service-reg-form' : 'biz-reg-form'}>
             {regSuccess && <p className="p-3 bg-green-950/45 border border-green-900 text-green-300 text-xs rounded-xl">{regSuccess}</p>}
             {regError && <p className="p-3 bg-red-950/45 border border-red-900 text-red-300 text-xs rounded-xl">{regError}</p>}
 
-            {/* ── Image Upload Grid ── */}
+            {/* ── Mandatory primary photo ── */}
             <ImageUploadGrid
               id="reg-image-upload"
               images={regImages}
-              onChange={setRegImages}
+              onChange={(next) => {
+                setRegImages(next);
+                if (next.length > 0) setRegPhotoError('');
+              }}
               language={language}
-              label={language === 'en' ? 'Upload Business/Service Images*' : 'رفع صور النشاط/الخدمة*'}
+              required
+              errorMessage={regPhotoError}
+              label={
+                registrationType === 'business'
+                  ? (language === 'en' ? 'Upload Business Photo' : 'رفع صورة النشاط التجاري')
+                  : (language === 'en' ? 'Upload Service Provider Photo' : 'رفع صورة مزود الخدمة')
+              }
             />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">{t.businessName}*</label>
+            <div className={registrationType === 'business' ? 'grid grid-cols-1 md:grid-cols-2 gap-4' : ''}>
+              <div className={registrationType === 'business' ? '' : 'w-full'}>
+                <label className="block text-xs text-gray-400 mb-1">
+                  {registrationType === 'business' ? t.businessName : t.serviceProviderName}*
+                </label>
                 <input
                   type="text"
                   value={regName}
                   onChange={(e) => setRegName(e.target.value)}
+                  placeholder={
+                    registrationType === 'business'
+                      ? (language === 'en' ? 'e.g. Al-Kawthar Grocery' : 'مثال: بقالة الكوثر')
+                      : (language === 'en' ? 'e.g. Hassan Al-Rashid' : 'مثال: حسن الراشد')
+                  }
                   className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white outline-none focus:border-[#FFA048]"
                   required
                 />
               </div>
 
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">{t.selectCategory}*</label>
-                <select
-                  value={regCatId}
-                  onChange={(e) => setRegCatId(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-[#FFA048] outline-none"
-                >
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name[language] || c.name.en}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">{t.subcategories}*</label>
-              <input
-                type="text"
-                placeholder="e.g. Grocery Store"
-                value={regSubcat}
-                onChange={(e) => setRegSubcat(e.target.value)}
-                className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white placeholder-gray-600 outline-none focus:border-[#FFA048]/40 transition-colors"
-                required
-              />
+              {registrationType === 'business' && (
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">{t.selectCategory}*</label>
+                  <select
+                    value={regCatId}
+                    onChange={(e) => setRegCatId(e.target.value)}
+                    className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-[#FFA048] outline-none"
+                    required
+                  >
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name[language] || c.name.en}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             <div>
@@ -684,94 +1002,190 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
               <textarea
                 value={regDesc}
                 rows={3}
-                placeholder="Describe your business, services, and what makes you stand out..."
+                placeholder={
+                  registrationType === 'business'
+                    ? (language === 'en' ? 'Describe your business, services, and what makes you stand out…' : 'صف نشاطك التجاري وخدماتك…')
+                    : (language === 'en' ? 'Describe your professional services, skills, and service area…' : 'صف خدماتك المهنية ومجال عملك…')
+                }
                 onChange={(e) => setRegDesc(e.target.value)}
                 className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white placeholder-gray-600 outline-none focus:border-[#FFA048]/40 transition-colors resize-none"
                 required
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">{t.address}*</label>
-                <input
-                  type="text"
-                  value={regAddress}
-                  onChange={(e) => setRegAddress(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white outline-none"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">{t.area}*</label>
-                <input
-                  type="text"
-                  value={regArea}
-                  onChange={(e) => setRegArea(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white outline-none"
-                  required
-                />
-              </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">{t.state}*</label>
+              <select
+                value={regState}
+                onChange={(e) => setRegState(e.target.value)}
+                className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-[#FFA048] outline-none focus:border-[#FFA048]"
+                required
+              >
+                <option value="">{language === 'en' ? 'Select state…' : 'اختر الولاية…'}</option>
+                {US_STATES.map(({ code, name }) => (
+                  <option key={code} value={code}>
+                    {code} — {name}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs text-gray-400 mb-1">{t.city}*</label>
-                <select
-                  value={regCity}
-                  onChange={(e) => setRegCity(e.target.value as any)}
-                  className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-[#FFA048]"
-                >
-                  <option value="Baghdad">{t.baghdad}</option>
-                  <option value="Najaf">{t.najaf}</option>
-                  <option value="Karbala">{t.karbala}</option>
-                  <option value="Basra">{t.basra}</option>
-                  <option value="Erbil">{t.erbil}</option>
-                  <option value="Diwaniyah">{t.diwaniyah}</option>
-                  <option value="Samarra">{t.samarra}</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">{t.phone}*</label>
                 <input
-                  type="tel"
-                  value={regPhone}
-                  placeholder="+964 770 000 0000"
-                  onChange={(e) => setRegPhone(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white"
+                  type="text"
+                  value={regCity}
+                  onChange={(e) => setRegCity(e.target.value)}
+                  placeholder={language === 'en' ? 'e.g. Houston' : 'مثال: هيوستن'}
+                  className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white placeholder-gray-600 outline-none focus:border-[#FFA048]"
                   required
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-400 mb-1">{t.whatsapp}*</label>
+                <label className="block text-xs text-gray-400 mb-1">{t.zipCode}*</label>
                 <input
-                  type="tel"
-                  placeholder="9647700000000"
-                  value={regWhatsapp}
-                  onChange={(e) => setRegWhatsapp(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="\d{5}"
+                  maxLength={5}
+                  value={regZipCode}
+                  onChange={(e) => setRegZipCode(formatZipInput(e.target.value))}
+                  placeholder="77001"
+                  className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white placeholder-gray-600 outline-none focus:border-[#FFA048]"
                   required
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs text-gray-400 mb-1">{t.coverUrl}</label>
+              <label className="block text-xs text-gray-400 mb-1">{t.address}*</label>
               <input
                 type="text"
-                placeholder="https://..."
-                value={regCover}
-                onChange={(e) => setRegCover(e.target.value)}
-                className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white"
+                value={regAddress}
+                onChange={(e) => setRegAddress(e.target.value)}
+                className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white outline-none focus:border-[#FFA048]"
+                required
               />
             </div>
 
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">
+                {registrationType === 'business' ? t.businessOperationalHours : t.serviceAvailabilityHours}*
+              </label>
+              <input
+                type="text"
+                value={regHours}
+                onChange={(e) => setRegHours(e.target.value)}
+                placeholder={language === 'en' ? 'e.g. Mon–Sat 9:00 AM – 9:00 PM' : 'مثال: الإثنين–السبت 9:00 ص – 9:00 م'}
+                className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white placeholder-gray-600 outline-none focus:border-[#FFA048]"
+                required
+              />
+            </div>
+
+            {isManageForm ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">{t.phone}*</label>
+                  <input
+                    type="tel"
+                    value={regPhone}
+                    placeholder={t.phoneHint}
+                    onChange={(e) => setRegPhone(formatUSPhoneInput(e.target.value))}
+                    className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white placeholder-gray-600 outline-none focus:border-[#FFA048]"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">{t.whatsapp}</label>
+                  <input
+                    type="tel"
+                    placeholder={t.phoneHint}
+                    value={regWhatsapp}
+                    onChange={(e) => setRegWhatsapp(formatUSPhoneInput(e.target.value))}
+                    className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white placeholder-gray-600 outline-none focus:border-[#FFA048]/40"
+                  />
+                </div>
+              </div>
+            ) : (
+            <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">{t.phone}*</label>
+                <div className="flex gap-2">
+                  <input
+                    type="tel"
+                    value={regPhone}
+                    placeholder={t.phoneHint}
+                    onChange={(e) => setRegPhone(formatUSPhoneInput(e.target.value))}
+                    className="flex-1 min-w-0 p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white placeholder-gray-600 outline-none focus:border-[#FFA048]"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendOtp}
+                    disabled={!isRegPhoneValid || isSendingOtp}
+                    className="shrink-0 px-3 py-2.5 rounded-xl bg-[#FFA048]/15 border border-[#FFA048]/40 text-[#FFA048] text-[10px] font-extrabold uppercase tracking-wide hover:bg-[#FFA048]/25 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    id="btn-send-otp"
+                  >
+                    {isSendingOtp ? t.sendingOtp : t.sendOtp}
+                  </button>
+                </div>
+                <p className="mt-1 text-[9px] text-gray-600">{t.phoneHint}</p>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">{t.whatsapp}</label>
+                <input
+                  type="tel"
+                  placeholder={t.phoneHint}
+                  value={regWhatsapp}
+                  onChange={(e) => setRegWhatsapp(formatUSPhoneInput(e.target.value))}
+                  className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white placeholder-gray-600 outline-none focus:border-[#FFA048]/40"
+                />
+              </div>
+            </div>
+
+            {isRegPhoneValid && (
+              <div className="animate-fade-in-up space-y-1.5" id="reg-otp-section">
+                <label className="block text-xs text-gray-400 mb-1">{t.verificationOtp}*</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  value={regOtp}
+                  onChange={(e) => setRegOtp(formatOtpInput(e.target.value))}
+                  placeholder={language === 'en' ? 'Enter 6-digit code' : 'أدخل الرمز المكوّن من 6 أرقام'}
+                  disabled={!regOtpSent}
+                  className="w-full p-2.5 rounded-xl bg-[#0F0E0C] border border-[#2D2319] text-xs text-white placeholder-gray-600 outline-none focus:border-[#FFA048] disabled:opacity-50 disabled:cursor-not-allowed tracking-[0.35em] text-center font-bold"
+                  id="reg-otp-input"
+                />
+                {regOtpNotice && (
+                  <p className="text-[10px] text-green-400 font-medium">{regOtpNotice}</p>
+                )}
+                {!regOtpSent && (
+                  <p className="text-[9px] text-gray-500">
+                    {language === 'en' ? 'Tap Send OTP to receive your verification code.' : 'اضغط إرسال OTP لاستلام رمز التحقق.'}
+                  </p>
+                )}
+              </div>
+            )}
+            </>
+            )}
+
             <button
               type="submit"
-              className="w-full py-3 mt-4 bg-[#FFA048] hover:bg-opacity-95 text-black font-extrabold rounded-2xl text-xs tracking-wider uppercase transition-all shadow-[0_0_15px_rgba(255,160,72,0.4)] hover:shadow-[0_0_20px_rgba(255,160,72,0.6)] active:scale-95"
+              disabled={
+                isManageForm
+                  ? isSavingManage
+                  : isSubmittingReg || (isRegPhoneValid && !regOtp.trim())
+              }
+              className="w-full py-3 mt-4 bg-[#FFA048] hover:bg-opacity-95 text-black font-extrabold rounded-2xl text-xs tracking-wider uppercase transition-all shadow-[0_0_15px_rgba(255,160,72,0.4)] hover:shadow-[0_0_20px_rgba(255,160,72,0.6)] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
               id="btn-register-biz"
             >
-              {t.submitApplication}
+              {isManageForm
+                ? (isSavingManage ? (language === 'en' ? 'Saving…' : 'جاري الحفظ…') : (language === 'en' ? 'Save Changes' : 'حفظ التغييرات'))
+                : (isSubmittingReg ? t.verifyingPhone : t.submitApplication)}
             </button>
           </form>
         </div>
@@ -1348,5 +1762,6 @@ export const BusinessPortalTab: React.FC<BusinessPortalTabProps> = ({ onOpenAuth
       )}
 
     </div>
+    </>
   );
 };

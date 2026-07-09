@@ -4,6 +4,7 @@ import { TRANSLATIONS } from '../data/translations';
 import { Business } from '../types';
 import { ArrowRight } from 'lucide-react';
 import { ImageUploadGrid } from './ImageUploadGrid';
+import { apiFetch } from '../lib/api';
 
 const buildListingImages = (gallery: string[] | undefined, logoUrl?: string): string[] => {
   if (gallery && gallery.length > 0) return gallery.slice(0, 5);
@@ -74,7 +75,7 @@ export const EditBusinessProfileModal: React.FC<EditBusinessProfileModalProps> =
     if (apiToken) {
       const cat = categories.find((c) => c.id === categoryId);
       try {
-        const res = await fetch(`/api/directory/${business.id}`, {
+        const res = await apiFetch(`/api/directory/${business.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',

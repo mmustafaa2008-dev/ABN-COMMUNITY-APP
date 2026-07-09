@@ -1,16 +1,13 @@
 /**
- * routes/reviews.js — In-memory star ratings (no SQLite)
- *
- * GET  /api/reviews?businessId=  — list reviews for a business (public)
- * POST /api/reviews              — submit a review (authenticated)
- *
- * Stored fields: userId, businessId, ratingScore, comment (+ userName, date for display)
+ * routes/reviews.js — Supabase-backed star ratings
  */
 
 'use strict';
 
 const express = require('express');
-const { reviews, newId, today } = require('../db');
+const { supabaseAdmin } = require('../supabase');
+const { isSupabaseStorage, reviews, newId, today } = require('../db');
+const { mapReviewFromDb } = require('../lib/supabaseMappers');
 const { authenticate } = require('../middleware/authMiddleware');
 
 const router = express.Router();
@@ -20,35 +17,50 @@ const mapReview = (r) => ({
   businessId: r.businessId,
   userId:     r.userId,
   userName:   r.userName,
-  rating:     r.ratingScore,
+  rating:     r.rating ?? r.ratingScore,
   comment:    r.comment,
   date:       r.date,
 });
 
-const aggregateForBusiness = (businessId) => {
-  const bizReviews = reviews.filter((r) => r.businessId === businessId);
+const aggregateForBusiness = (list, businessId) => {
+  const bizReviews = list.filter((r) => r.businessId === businessId);
   if (bizReviews.length === 0) return { avg: 0, count: 0 };
-  const avg = bizReviews.reduce((s, r) => s + r.ratingScore, 0) / bizReviews.length;
+  const avg = bizReviews.reduce((s, r) => s + (r.rating ?? r.ratingScore), 0) / bizReviews.length;
   return { avg: Math.round(avg * 10) / 10, count: bizReviews.length };
 };
 
-// ── GET /api/reviews?businessId= ──────────────────────────────────────────
-router.get('/', (req, res) => {
-  const { businessId } = req.query;
-  if (!businessId) {
-    return res.status(400).json({ error: 'businessId query param is required.' });
+async function fetchReviewsForBusiness(businessId) {
+  if (!isSupabaseStorage()) {
+    return reviews.filter((r) => r.businessId === businessId);
   }
 
-  const list = reviews
-    .filter((r) => r.businessId === businessId)
-    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
-    .map(mapReview);
+  const { data, error } = await supabaseAdmin
+    .from('business_reviews')
+    .select('*')
+    .eq('business_id', businessId)
+    .order('created_at', { ascending: false });
 
-  res.json(list);
+  if (error) throw new Error(error.message);
+  return (data || []).map(mapReviewFromDb);
+}
+
+// ── GET /api/reviews?businessId= ──────────────────────────────────────────
+router.get('/', async (req, res, next) => {
+  try {
+    const { businessId } = req.query;
+    if (!businessId) {
+      return res.status(400).json({ error: 'businessId query param is required.' });
+    }
+
+    const list = (await fetchReviewsForBusiness(businessId)).map(mapReview);
+    res.json(list);
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ── POST /api/reviews ─────────────────────────────────────────────────────
-router.post('/', authenticate, (req, res, next) => {
+router.post('/', authenticate, async (req, res, next) => {
   try {
     const { businessId, rating, comment = '' } = req.body;
 
@@ -62,10 +74,8 @@ router.post('/', authenticate, (req, res, next) => {
     }
 
     const userId = req.user.id;
-    const existing = reviews.find(
-      (r) => r.userId === userId && r.businessId === businessId,
-    );
-    if (existing) {
+    const existingList = await fetchReviewsForBusiness(businessId);
+    if (existingList.some((r) => r.userId === userId)) {
       return res.status(409).json({ error: 'You have already reviewed this listing.' });
     }
 
@@ -80,12 +90,32 @@ router.post('/', authenticate, (req, res, next) => {
       createdAt:   new Date().toISOString(),
     };
 
-    reviews.unshift(record);
+    if (!isSupabaseStorage()) {
+      reviews.unshift(record);
+      const stats = aggregateForBusiness(reviews, businessId);
+      return res.status(201).json({ review: mapReview(record), aggregate: stats });
+    }
 
-    const stats = aggregateForBusiness(businessId);
+    const { data, error } = await supabaseAdmin
+      .from('business_reviews')
+      .insert({
+        user_id:      userId,
+        business_id:  businessId,
+        rating_score: ratingScore,
+        comment:      record.comment,
+        user_name:    record.userName,
+        review_date:  record.date,
+      })
+      .select('*')
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    const all = await fetchReviewsForBusiness(businessId);
+    const stats = aggregateForBusiness(all, businessId);
 
     res.status(201).json({
-      review: mapReview(record),
+      review: mapReview(mapReviewFromDb(data)),
       aggregate: stats,
     });
   } catch (err) {
