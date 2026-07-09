@@ -1,10 +1,10 @@
 import { Capacitor } from '@capacitor/core';
 
 /**
- * API base URL — MUST be a public HTTPS URL for APK users worldwide.
- * Set VITE_API_BASE_URL in .env.production before building the release APK.
- *
- * Example: https://abn-community-api.onrender.com
+ * API base URL resolution:
+ * - Web production (Vercel Services): same-origin `/api` when VITE_API_BASE_URL is unset.
+ * - Native APK: set VITE_API_BASE_URL in .env.production to your public HTTPS API.
+ * - Dev browser: Vite proxy or LAN fallback below.
  */
 function normalizeBaseUrl(raw: string): string {
   let url = raw.trim().replace(/\/+$/, '');
@@ -26,9 +26,14 @@ function resolveApiBaseUrl(): string {
     return normalizeBaseUrl('http://192.168.100.13:3001');
   }
 
-  if (Capacitor.isNativePlatform() || import.meta.env.PROD) {
+  // Production web: Vercel rewrites /api → backend on the same origin
+  if (import.meta.env.PROD && !Capacitor.isNativePlatform()) {
+    return '';
+  }
+
+  if (Capacitor.isNativePlatform()) {
     console.error(
-      '[api] Missing VITE_API_BASE_URL. Rebuild APK with .env.production pointing to your live server (Render/Railway).',
+      '[api] Missing VITE_API_BASE_URL. Rebuild APK with .env.production pointing to your live server.',
     );
   }
 
@@ -39,13 +44,13 @@ export const API_BASE_URL = resolveApiBaseUrl();
 
 export const apiUrl = (path: string): string => {
   const segment = path.startsWith('/') ? path : `/${path}`;
-  return `${API_BASE_URL}${segment}`;
+  return API_BASE_URL ? `${API_BASE_URL}${segment}` : segment;
 };
 
 export const apiFetch = async (path: string, init?: RequestInit): Promise<Response> => {
-  if (!API_BASE_URL) {
+  if (!API_BASE_URL && Capacitor.isNativePlatform()) {
     throw new Error(
-      'Server URL not configured. Deploy backend to Render and rebuild APK with VITE_API_BASE_URL.',
+      'Server URL not configured. Set VITE_API_BASE_URL in .env.production before building the APK.',
     );
   }
   const url = apiUrl(path);
