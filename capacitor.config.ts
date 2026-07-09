@@ -1,17 +1,22 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
+/** Set CAPACITOR_PRODUCTION=true when building APK for clients worldwide */
+const isProductionApp = process.env.CAPACITOR_PRODUCTION === 'true';
+
 const config: CapacitorConfig = {
   appId: 'com.example.shiabusinessdirectory',
   appName: 'ANV',
   webDir: 'dist',
+  server: isProductionApp
+    ? { androidScheme: 'https' }
+    : { androidScheme: 'http', cleartext: true },
   android: {
-    // Allow the WebView to draw behind the status bar
     backgroundColor: '#0A0705',
+    allowMixedContent: !isProductionApp,
   },
   plugins: {
-    // Ensure safe-area insets are forwarded to the WebView
     SplashScreen: {
-      launchShowDuration: 1500,
+      launchShowDuration: 2000,
       backgroundColor: '#0A0705',
       androidSplashResourceName: 'splash',
       showSpinner: false,

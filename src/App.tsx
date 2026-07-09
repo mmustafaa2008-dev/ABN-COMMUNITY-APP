@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { DirectoryProvider, useDirectory } from './context/DirectoryContext';
 import { TRANSLATIONS } from './data/translations';
-import { AuthModal } from './components/AuthModal';
-import { SplashScreen } from './screens/SplashScreen';
+import { AuthScreen } from './screens/AuthScreen';
+import { SplashScreen, SPLASH_FADE_MS, SPLASH_VISIBLE_MS } from './screens/SplashScreen';
 import { BusinessDetailsModal } from './components/BusinessDetailsModal';
 import { HomeTab } from './components/HomeTab';
 import { SearchTab } from './components/SearchTab';
@@ -14,6 +14,7 @@ import { AdminPanelTab } from './components/AdminPanelTab';
 import { JobManagementScreen } from './components/JobManagementScreen';
 import { JobBoardScreen } from './components/JobBoardScreen';
 import { Business } from './types';
+import { getUserListing } from './utils/listingAccess';
 import {
   Home,
   Search,
@@ -23,8 +24,8 @@ import {
   Shield,
   Smartphone,
   Info,
-  Zap,
   ArrowLeft,
+  Loader2,
 } from 'lucide-react';
 
 // ── Live Clock Hook ────────────────────────────────────────────
@@ -71,33 +72,27 @@ function TabContent({
   setSelectedBusiness,
   searchQueryText,
   setSearchQueryText,
-  setIsAuthOpen,
-  isBusinessPortal,
-  hasBusinessListing,
 }: {
   activeTab: string;
   setActiveTab: (t: string) => void;
   setSelectedBusiness: (b: Business | null) => void;
   searchQueryText: string;
   setSearchQueryText: (q: string) => void;
-  setIsAuthOpen: (v: boolean) => void;
-  isBusinessPortal?: boolean;
-  hasBusinessListing?: boolean;
 }) {
-  const { currentUser } = useDirectory();
+  const { currentUser, businesses } = useDirectory();
+  const myListing = getUserListing(currentUser, businesses);
   return (
     <>
-      {!isBusinessPortal && activeTab === 'home' && (
+      {activeTab === 'home' && (
         <TabView tabKey="home">
           <HomeTab
             onSelectBusiness={setSelectedBusiness}
             onSwitchTab={setActiveTab}
-            onOpenAuth={() => setIsAuthOpen(true)}
             setSearchQueryText={setSearchQueryText}
           />
         </TabView>
       )}
-      {!isBusinessPortal && activeTab === 'search' && (
+      {activeTab === 'search' && (
         <TabView tabKey="search">
           <SearchTab
             initialQuery={searchQueryText}
@@ -107,45 +102,33 @@ function TabContent({
           />
         </TabView>
       )}
-      {!isBusinessPortal && activeTab === 'saved' && (
+      {activeTab === 'saved' && (
         <TabView tabKey="saved">
           <SavedTab onSelectBusiness={setSelectedBusiness} onSwitchTab={setActiveTab} />
         </TabView>
       )}
       {activeTab === 'business' && (
         <TabView tabKey="business">
-          {isBusinessPortal ? (
-            /* Registered business owners see the same full directory feed as consumers,
-               but the "Register as a Business" banner is hidden by HomeTab's own conditional */
-            <HomeTab
-              onSelectBusiness={setSelectedBusiness}
-              onSwitchTab={setActiveTab}
-              onOpenAuth={() => setIsAuthOpen(true)}
-              setSearchQueryText={setSearchQueryText}
-            />
-          ) : (
-            <BusinessPortalTab onOpenAuth={() => setIsAuthOpen(true)} />
-          )}
+          <BusinessPortalTab registrationOnly />
         </TabView>
       )}
 
       {activeTab === 'account' && (
         <TabView tabKey="account">
-          <AccountTab onOpenAuth={() => setIsAuthOpen(true)} onSwitchTab={setActiveTab} />
+          <AccountTab onSwitchTab={setActiveTab} />
         </TabView>
       )}
-      {/* Portal Management — accessed via AccountTab Business Portal tile */}
+      {/* Portal Management — opened from Account settings Manage Business/Service */}
       {activeTab === 'portal-management' && (
         <TabView tabKey="portal-management">
           <BusinessPortalTab
-            onOpenAuth={() => setIsAuthOpen(true)}
             onBack={() => setActiveTab('account')}
+            manageMode
           />
         </TabView>
       )}
 
-      {/* Job Management — Business Person ($50) ONLY; service providers silently redirected */}
-      {activeTab === 'job-management' && currentUser?.role === 'business' && (
+      {activeTab === 'job-management' && myListing?.listingType === 'business' && (
         <TabView tabKey="job-management">
           <JobManagementScreen onBack={() => setActiveTab('account')} />
         </TabView>
@@ -187,27 +170,19 @@ function BottomNav({
   setSearchQueryText,
   t,
   isAdmin,
-  isBusiness,
-  hasBusinessListing,
 }: {
   activeTab: string;
   setActiveTab: (t: string) => void;
   setSearchQueryText: (q: string) => void;
   t: Record<string, string>;
   isAdmin?: boolean;
-  isBusiness?: boolean;
-  hasBusinessListing?: boolean;
 }) {
-  // Account is active on its own tab AND on any portal / job sub-pages
   const isAccountActive = activeTab === 'account' || activeTab === 'portal-management' || activeTab === 'job-management';
-  // Home is active on the consumer home OR the business directory tab
-  const isHomeActive = activeTab === 'home' || activeTab === 'business';
 
   return (
     <nav className="flex justify-between items-center h-full px-2">
 
-      {/* Consumer tabs — ONLY for non-business, non-admin users */}
-      {(!isAdmin && !isBusiness) && (
+      {!isAdmin && (
         <>
           <button
             onClick={() => { setSearchQueryText(''); setActiveTab('home'); }}
@@ -236,19 +211,6 @@ function BottomNav({
         </>
       )}
 
-      {/* Portal Home tab — shown for ALL business/service_provider users (replaces consumer 3-tab set) */}
-      {isBusiness && !isAdmin && (
-        <button
-          onClick={() => { setSearchQueryText(''); setActiveTab(hasBusinessListing ? 'business' : 'home'); }}
-          className={`flex flex-col items-center justify-center flex-1 py-2 transition-all ${isHomeActive ? 'text-[#FFA048] scale-110 font-black' : 'text-gray-500 hover:text-white'}`}
-          id="tab-btn-portal-home"
-        >
-          <Home className="w-5 h-5 mb-0.5" />
-          <span className="text-[9px] tracking-tight">{t.home}</span>
-        </button>
-      )}
-
-      {/* Admin tab */}
       {isAdmin && (
         <button
           onClick={() => setActiveTab('admin')}
@@ -274,37 +236,29 @@ function BottomNav({
 }
 
 function DirectoryAppContent() {
-  const { language, setLanguage, currentUser, businesses, signIn, apiLogin, signOut } = useDirectory();
+  const { language, setLanguage, currentUser, businesses, authReady, isAuthenticated } = useDirectory();
   const t = TRANSLATIONS[language];
   const liveTime = useLiveClock();
   const isMobile = useIsMobile();
 
   const [activeTab, setActiveTab] = useState<string>('home');
   const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
-  const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [searchQueryText, setSearchQueryText] = useState('');
   const [showSplash, setShowSplash] = useState(true);
   const [splashFading, setSplashFading] = useState(false);
 
-  // Welcome splash — mirrors native Capacitor splash duration
+  // Welcome splash — hold for exactly 2s, then fade into main layout
   useEffect(() => {
-    const fadeTimer = setTimeout(() => setSplashFading(true), 1200);
-    const hideTimer = setTimeout(() => setShowSplash(false), 1700);
+    const fadeTimer = setTimeout(() => setSplashFading(true), SPLASH_VISIBLE_MS);
+    const hideTimer = setTimeout(() => setShowSplash(false), SPLASH_VISIBLE_MS + SPLASH_FADE_MS);
     return () => {
       clearTimeout(fadeTimer);
       clearTimeout(hideTimer);
     };
   }, []);
 
-  const isBusiness = currentUser?.role === 'business' || currentUser?.role === 'service_provider';
   const isAdmin = currentUser?.role === 'admin';
-  // Check by both id (mock data) and email (Supabase API data) so both auth paths work
-  const hasBusinessListing = Boolean(
-    currentUser && businesses.some((b) =>
-      b.ownerId === currentUser.id || b.ownerId === currentUser.email
-    )
-  );
-  const isBusinessPortal = isBusiness && hasBusinessListing;
+  const myListing = getUserListing(currentUser, businesses);
 
   // Apply RTL direction when Arabic is selected
   useEffect(() => {
@@ -312,43 +266,41 @@ function DirectoryAppContent() {
     document.documentElement.setAttribute('lang', language);
   }, [language]);
 
-  // Business/service_provider users: redirect from Search/Saved; registered users also redirect from consumer Home
+  // Job management is only for approved business listings
   useEffect(() => {
-    if (!isBusiness) return;
-    if (activeTab === 'search' || activeTab === 'saved') {
-      setActiveTab(hasBusinessListing ? 'business' : 'home');
-    } else if (hasBusinessListing && activeTab === 'home') {
-      setActiveTab('business');
-    }
-  }, [isBusiness, hasBusinessListing, activeTab]);
-
-  // job-management is exclusively for 'business' role — redirect service providers away
-  useEffect(() => {
-    if (activeTab === 'job-management' && currentUser?.role !== 'business') {
+    if (activeTab === 'job-management' && myListing?.listingType !== 'business') {
       setActiveTab('account');
     }
-  }, [activeTab, currentUser?.role]);
-
-  // Sandbox login: try the live API first, fall back to mock if backend is offline
-  const handleSandboxLogin = async (profile: 'cust' | 'owner' | 'service' | 'admin') => {
-    const CREDS = {
-      cust:    { email: 'manimuhammad000@gmail.com',  password: 'password123', phone: '+1 770 111 2222', role: 'customer'         as const, name: 'Mani Muhammad' },
-      owner:   { email: 'business@shiadirectory.com', password: 'password123', phone: '+1 770 123 4567', role: 'business'         as const, name: 'Hassan Al-Kawthar' },
-      service: { email: 'service@shiadirectory.com',  password: 'password123', phone: '+1 780 987 6543', role: 'service_provider' as const, name: 'Noor Electricians (Demo)' },
-      admin:   { email: 'admin@shiadirectory.com',    password: 'admin123',    phone: '+1 780 000 0000', role: 'admin'            as const, name: 'Abu Murtadha (Admin)' },
-    };
-    const c = CREDS[profile];
-    const result = await apiLogin(c.email, c.password);
-    if (!result.success) {
-      // Backend not running — use in-memory mock auth as fallback
-      signIn(c.email, c.phone, c.role, c.name);
-    }
-  };
+  }, [activeTab, myListing?.listingType]);
 
   const verifiedActiveCount = businesses.filter((b) => b.isVerified && b.status === 'active').length;
   const expiredCount = businesses.filter((b) => b.status === 'suspended').length;
 
   const splashOverlay = showSplash ? <SplashScreen fading={splashFading} /> : null;
+
+  if (!authReady) {
+    return (
+      <>
+        {splashOverlay}
+        <div
+          className="fixed inset-0 flex flex-col items-center justify-center bg-gradient-to-b from-[#191512] to-[#0A0705] text-[#F4E3D7]"
+          id="auth-boot-loading"
+        >
+          <Loader2 className="w-8 h-8 text-[#FFA048] animate-spin mb-3" />
+          <p className="text-xs text-gray-500 font-medium">Checking session…</p>
+        </div>
+      </>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <>
+        {splashOverlay}
+        <AuthScreen />
+      </>
+    );
+  }
 
   // ── MOBILE LAYOUT: Full-screen native app experience ──────────
   if (isMobile) {
@@ -368,9 +320,6 @@ function DirectoryAppContent() {
             setSelectedBusiness={setSelectedBusiness}
             searchQueryText={searchQueryText}
             setSearchQueryText={setSearchQueryText}
-            setIsAuthOpen={setIsAuthOpen}
-            isBusinessPortal={isBusinessPortal}
-            hasBusinessListing={hasBusinessListing}
           />
         </div>
 
@@ -386,8 +335,6 @@ function DirectoryAppContent() {
               setSearchQueryText={setSearchQueryText}
               t={t as unknown as Record<string, string>}
               isAdmin={isAdmin}
-              isBusiness={isBusiness}
-              hasBusinessListing={hasBusinessListing}
             />
           </div>
         </div>
@@ -399,7 +346,6 @@ function DirectoryAppContent() {
             onClose={() => setSelectedBusiness(null)}
           />
         )}
-        <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
       </div>
       </>
     );
@@ -466,9 +412,6 @@ function DirectoryAppContent() {
                 setSelectedBusiness={setSelectedBusiness}
                 searchQueryText={searchQueryText}
                 setSearchQueryText={setSearchQueryText}
-                setIsAuthOpen={setIsAuthOpen}
-                isBusinessPortal={isBusinessPortal}
-                hasBusinessListing={hasBusinessListing}
               />
             </div>
 
@@ -480,8 +423,6 @@ function DirectoryAppContent() {
                     setSearchQueryText={setSearchQueryText}
                     t={t as unknown as Record<string, string>}
                     isAdmin={isAdmin}
-                    isBusiness={isBusiness}
-                    hasBusinessListing={hasBusinessListing}
                   />
             </div>
 
@@ -506,37 +447,10 @@ function DirectoryAppContent() {
             </p>
           </div>
 
-          {/* Account Simulation */}
+          {/* Directory stats */}
           <div className="p-5 rounded-3xl bg-[#0F0E0C] border border-[#2D2319] space-y-4 animate-fade-in-up" style={{ animationDelay: '0.07s' }}>
-            <span className="text-[10px] text-gray-400 font-black uppercase tracking-wider block">⚡ Account Simulation Trigger Board</span>
-            <div className="grid grid-cols-2 gap-2.5">
-              {[
-                { profile: 'cust' as const, icon: <User className="w-5 h-5 text-green-400" />, name: 'Mani Muhammad', sub: 'Customer', tab: 'home', role: 'customer' },
-                { profile: 'owner' as const, icon: <Briefcase className="w-5 h-5 text-amber-500" />, name: 'Hassan Al-Kawthar', sub: 'Business ($50)', tab: 'business', role: 'business' },
-                { profile: 'service' as const, icon: <Zap className="w-5 h-5 text-blue-400" />, name: 'Noor Electricians', sub: 'Service Provider ($30)', tab: 'business', role: 'service_provider' },
-                { profile: 'admin' as const, icon: <Shield className="w-5 h-5 text-red-400" />, name: 'Abu Murtadha', sub: 'Sys Admin', tab: 'admin', role: 'admin' },
-              ].map(({ profile, icon, name, sub, tab, role }) => (
-                <button
-                  key={profile}
-                  onClick={() => { handleSandboxLogin(profile).then(() => setActiveTab(tab)); }}
-                  className={`p-3 rounded-2xl border text-left flex flex-col justify-between h-24 hover:scale-[1.02] transition-all card-hover ${
-                    currentUser?.role === role ? 'bg-[#FFA048]/10 border-[#FFA048]' : 'bg-[#191613] border-[#2D2319] hover:bg-[#201B15]'
-                  }`}
-                >
-                  <div className="flex justify-between w-full items-center">
-                    {icon}
-                    {currentUser?.role === role && <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>}
-                  </div>
-                  <div>
-                    <span className="font-bold text-xs block text-white">{name}</span>
-                    <span className="text-[8px] text-gray-500 block">{sub}</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-
+            <span className="text-[10px] text-gray-400 font-black uppercase tracking-wider block">Live Directory Stats</span>
             <div className="p-3.5 rounded-2xl bg-black/40 border border-[#2D2319]/80 text-xs text-gray-400">
-              <h4 className="font-semibold text-[11px] uppercase tracking-wider text-[#FFA048] mb-1">ACTIVE STATS:</h4>
               <ul className="list-disc pl-4 space-y-1 text-[11px]">
                 <li>Total Listings: <strong className="text-white">{businesses.length}</strong></li>
                 <li>Active: <strong className="text-green-400">{verifiedActiveCount}</strong></li>
@@ -554,7 +468,7 @@ function DirectoryAppContent() {
             <p className="text-xs text-gray-300"><strong>The $50/Month Visibility Rule:</strong> Each business requires a monthly fee to remain in the directory.</p>
             <div className="p-3 rounded-2xl bg-[#1C130D]/75 border border-[#3D2C1E]/50">
               <p className="text-[11px] text-amber-400 leading-normal">
-                💡 <strong>Test live:</strong> Sign in as Business Owner Hassan → Business Portal → "Force Expire Subscription". Then go to Search — Al-Kawthar Grocery disappears! Pay $50 to restore.
+                Sign in via the auth screen to register a business or service from Home, then await admin approval before it appears in search.
               </p>
             </div>
           </div>
@@ -566,7 +480,6 @@ function DirectoryAppContent() {
       {selectedBusiness && (
         <BusinessDetailsModal business={selectedBusiness} onClose={() => setSelectedBusiness(null)} />
       )}
-      <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
 
       <footer className="border-t border-[#2D2319] bg-[#0F0E0C] py-6 text-center text-xs text-gray-500">
         <p>© 2026 Ahle Bait Network (ABN). All rights reserved.</p>

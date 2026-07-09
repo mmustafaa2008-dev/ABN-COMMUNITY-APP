@@ -4,6 +4,8 @@ import { useDirectory } from '../context/DirectoryContext';
 import { TRANSLATIONS } from '../data/translations';
 import { Business } from '../types';
 import { ImageUploadGrid } from './ImageUploadGrid';
+import { getUserListing } from '../utils/listingAccess';
+import { apiFetch } from '../lib/api';
 
 const DEFAULT_LOGO = 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=200&h=200';
 
@@ -25,15 +27,13 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ onClose }) =
   } = useDirectory();
   const t = TRANSLATIONS[language];
 
-  const isListingOwner =
-    currentUser?.role === 'business' || currentUser?.role === 'service_provider';
-
   const myBusiness = useMemo(
-    () => businesses.find(
-      (b) => b.ownerId === currentUser?.id || b.ownerId === currentUser?.email,
-    ),
+    () => getUserListing(currentUser, businesses),
     [businesses, currentUser],
   );
+
+  // Directory listing edits live under Account → Manage Business/Service
+  const isListingOwner = false;
 
   // ── Customer / Admin account fields ─────────────────────────────────────
   const [name, setName] = useState(currentUser?.name || '');
@@ -121,7 +121,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ onClose }) =
     if (apiToken) {
       try {
         if (myBusiness) {
-          const res = await fetch(`/api/directory/${myBusiness.id}`, {
+          const res = await apiFetch(`/api/directory/${myBusiness.id}`, {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
@@ -136,7 +136,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ onClose }) =
             return;
           }
         } else {
-          const res = await fetch('/api/directory', {
+          const res = await apiFetch('/api/directory', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

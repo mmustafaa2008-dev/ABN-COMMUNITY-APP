@@ -1,7 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { useDirectory } from '../context/DirectoryContext';
+import { apiFetch } from '../lib/api';
 import { TRANSLATIONS } from '../data/translations';
 import { Job, JobCategory } from '../types';
+import { isLiveDirectoryListing } from '../utils/listingAccess';
 import {
   Search,
   MapPin,
@@ -68,7 +70,6 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
 interface HomeTabProps {
   onSelectBusiness: (biz: Business) => void;
   onSwitchTab: (tabId: string) => void;
-  onOpenAuth: () => void;
   setSearchQueryText: (query: string) => void;
 }
 
@@ -111,7 +112,6 @@ function isBusinessOpenNow(workingHours: string): boolean | null {
 export const HomeTab: React.FC<HomeTabProps> = ({
   onSelectBusiness,
   onSwitchTab,
-  onOpenAuth,
   setSearchQueryText
 }) => {
   const { language, businesses, categories, currentUser, notifications, jobs, hiringActive } = useDirectory();
@@ -149,7 +149,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
         const params = new URLSearchParams();
         if (q)    params.set('search', q);
         if (city) params.set('city',   city);
-        const res  = await fetch(`/api/directory?${params.toString()}`);
+        const res  = await apiFetch(`/api/directory?${params.toString()}`);
         if (res.ok) {
           const data = await res.json();
           // Map API response shape → Business type (same mapper used in context)
@@ -196,21 +196,21 @@ export const HomeTab: React.FC<HomeTabProps> = ({
   // Use live API results when available; otherwise filter the local businesses array
   const activeBusinesses = useMemo(() => {
     const source = apiResults ?? businesses;
-    if (apiResults) return source.filter((b) => b.status === 'active');
+    if (apiResults) return source.filter((b) => isLiveDirectoryListing(b));
     const q = inputSearch.trim().toLowerCase();
     return source.filter((b) => {
       const matchCity = selectedCity === 'all' || b.city === selectedCity;
       const matchQ    = !q || b.name.toLowerCase().includes(q) ||
                         b.subcategory.en.toLowerCase().includes(q) ||
                         b.description.en.toLowerCase().includes(q);
-      return b.status === 'active' && matchCity && matchQ;
+      return isLiveDirectoryListing(b) && matchCity && matchQ;
     });
   }, [businesses, apiResults, inputSearch, selectedCity]);
 
   // Featured = active + verified, sorted best rating first
   const featuredBusinesses = useMemo(
     () => businesses
-      .filter((b) => b.status === 'active' && b.isVerified)
+      .filter((b) => isLiveDirectoryListing(b))
       .sort((a, b) => b.rating - a.rating)
       .slice(0, 3),
     [businesses]
@@ -364,8 +364,8 @@ export const HomeTab: React.FC<HomeTabProps> = ({
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none snap-x">
           {CITY_KEYS.map(({ key, label }) => {
             const count = key === 'all'
-              ? businesses.filter((b) => b.status === 'active').length
-              : businesses.filter((b) => b.status === 'active' && b.city === key).length;
+              ? businesses.filter((b) => isLiveDirectoryListing(b)).length
+              : businesses.filter((b) => isLiveDirectoryListing(b) && b.city === key).length;
             return (
               <button
                 key={key}
@@ -425,9 +425,8 @@ export const HomeTab: React.FC<HomeTabProps> = ({
 
 
 
-      {/* Register Banner — hidden for business owners, service providers, and anyone with an active listing */}
-      {currentUser?.role !== 'business' &&
-        currentUser?.role !== 'service_provider' &&
+      {/* Register Banner — any signed-in user without a listing yet */}
+      {currentUser &&
         !businesses.some((b) => b.ownerId === currentUser?.id || b.ownerId === currentUser?.email) && (
         <div className="animate-fade-in-up" style={{animationDelay:'0.15s'}}>
           <button

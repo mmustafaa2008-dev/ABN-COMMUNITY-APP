@@ -1,13 +1,5 @@
 /**
- * routes/auth.js
- *
- * POST /api/auth/register   — create a new account
- * POST /api/auth/login      — sign in, returns JWT
- * GET  /api/auth/me         — fetch current user (requires token)
- * PUT  /api/auth/me         — update name / phone / preferredLanguage
- *
- * Storage: in-memory Map (see db.js) — no native database driver required.
- * Demo accounts (business@, service@, admin@) are pre-seeded at startup.
+ * routes/auth.js — JWT auth with Supabase-persisted users (app_users table)
  */
 
 'use strict';
@@ -15,8 +7,10 @@
 const express  = require('express');
 const bcrypt   = require('bcryptjs');
 const jwt      = require('jsonwebtoken');
-const { users, stableId } = require('../db');
-const { authenticate }    = require('../middleware/authMiddleware');
+const { stableId } = require('../lib/memoryStore');
+const { findByEmail, findById, createUser, updateUser } = require('../lib/userStore');
+const { userOwnsDirectoryProfile, findProfileForUser } = require('../lib/profileStore');
+const { authenticate } = require('../middleware/authMiddleware');
 
 const router         = express.Router();
 const JWT_SECRET     = process.env.JWT_SECRET     || 'dev-secret-change-in-production';
@@ -25,7 +19,6 @@ const HASH_ROUNDS    = 12;
 
 const VALID_ROLES = ['customer', 'business', 'service_provider', 'admin'];
 
-/** Strip the password hash before sending a user object to the client */
 const mapUser = (u) => ({
   id:                u.id,
   email:             u.email,
@@ -34,6 +27,18 @@ const mapUser = (u) => ({
   role:              u.role,
   preferredLanguage: u.preferredLanguage,
 });
+
+/** Build login/register payload — only business/service_provider users hit profiles_directory. */
+async function buildAuthResponse(user, token) {
+  const body = { token, user: mapUser(user) };
+
+  if (userOwnsDirectoryProfile(user.role)) {
+    const profile = await findProfileForUser(user);
+    body.profile = profile ?? null;
+  }
+
+  return body;
+}
 
 // ── POST /api/auth/register ───────────────────────────────────────────────
 router.post('/register', async (req, res, next) => {
@@ -51,19 +56,26 @@ router.post('/register', async (req, res, next) => {
     }
 
     const key = email.toLowerCase().trim();
-    if (users.has(key)) {
+    if (await findByEmail(key)) {
       return res.status(409).json({ error: 'An account with this email already exists.' });
     }
 
     const passwordHash = await bcrypt.hash(password, HASH_ROUNDS);
     const id = stableId(role, key);
 
-    const record = { id, email: key, phone, name, role, passwordHash, preferredLanguage: 'en' };
-    users.set(key, record);
+    const record = await createUser({
+      id,
+      email: key,
+      phone,
+      name,
+      role,
+      passwordHash,
+      preferredLanguage: 'en',
+    });
 
     const token = jwt.sign({ id, email: key, role, name }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 
-    res.status(201).json({ token, user: mapUser(record) });
+    res.status(201).json(await buildAuthResponse(record, token));
   } catch (err) {
     next(err);
   }
@@ -79,7 +91,7 @@ router.post('/login', async (req, res, next) => {
     }
 
     const key  = email.toLowerCase().trim();
-    const user = users.get(key);
+    const user = await findByEmail(key);
 
     if (!user) {
       return res.status(401).json({ error: 'Invalid email or password.' });
@@ -96,30 +108,33 @@ router.post('/login', async (req, res, next) => {
       { expiresIn: JWT_EXPIRES_IN },
     );
 
-    res.json({ token, user: mapUser(user) });
+    res.json(await buildAuthResponse(user, token));
   } catch (err) {
     next(err);
   }
 });
 
 // ── GET /api/auth/me ──────────────────────────────────────────────────────
-router.get('/me', authenticate, (req, res) => {
-  const user = [...users.values()].find((u) => u.id === req.user.id);
-  if (!user) return res.status(404).json({ error: 'User not found.' });
-  res.json(mapUser(user));
+router.get('/me', authenticate, async (req, res, next) => {
+  try {
+    const user = await findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+    res.json(mapUser(user));
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ── PUT /api/auth/me ──────────────────────────────────────────────────────
-router.put('/me', authenticate, (req, res) => {
-  const user = [...users.values()].find((u) => u.id === req.user.id);
-  if (!user) return res.status(404).json({ error: 'User not found.' });
-
-  const { name, phone, preferredLanguage } = req.body;
-  if (name)              user.name              = name;
-  if (phone)             user.phone             = phone;
-  if (preferredLanguage) user.preferredLanguage = preferredLanguage;
-
-  res.json(mapUser(user));
+router.put('/me', authenticate, async (req, res, next) => {
+  try {
+    const { name, phone, preferredLanguage } = req.body;
+    const user = await updateUser(req.user.id, { name, phone, preferredLanguage });
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+    res.json(mapUser(user));
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;

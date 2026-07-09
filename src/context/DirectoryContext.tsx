@@ -1,4 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import type { Session } from '@supabase/supabase-js';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { apiFetch } from '../lib/api';
 import {
   UserProfile, Business, BusinessStatus, Category, Review,
   PaymentRecord, AppNotification, UserRole, Product, Order, Job, JobCategory,
@@ -44,16 +47,22 @@ const mapDirectoryProfile = (p: Record<string, unknown>): Business => ({
   description:          { en: String(p.description ?? ''), ar: '' },
   categoryId:           String(p.category ?? '').toLowerCase().replace(/ /g, '-'),
   subcategory:          { en: String(p.category ?? ''), ar: '' },
+  listingType:          (p.listingType === 'service' ? 'service' : 'business') as Business['listingType'],
   address:              String(p.address ?? ''),
   city:                 (String(p.city || 'New York')) as Business['city'],
   area:                 String(p.area ?? ''),
   isVerified:           Boolean(p.isVerified),
-  status:               (p.subscriptionStatus === 'suspended' ? 'suspended' : 'active') as BusinessStatus,
+  status:               (p.subscriptionStatus === 'suspended'
+    ? 'suspended'
+    : p.subscriptionStatus === 'pending'
+      ? 'pending'
+      : 'active') as BusinessStatus,
   phone:                String(p.phone ?? ''),
   whatsapp:             String(p.whatsapp ?? ''),
   website:              String(p.website ?? ''),
   workingHours:         { en: String(p.workingHours ?? ''), ar: '' },
   membershipExpiryDate: String(p.membershipExpiry ?? ''),
+  subscriptionTier:     p.subscriptionTier === 30 ? 30 : p.subscriptionTier === 50 ? 50 : undefined,
   gallery:              [],
   rating:               Number(p.rating ?? 0),
   reviewsCount:         Number(p.reviewsCount ?? 0),
@@ -82,15 +91,31 @@ const normaliseRole = (r: string): UserRole => {
   return 'customer';
 };
 
+const profileFromSupabaseSession = (session: Session): UserProfile => {
+  const u = session.user;
+  const meta = (u.user_metadata ?? {}) as Record<string, unknown>;
+  const appMeta = (u.app_metadata ?? {}) as Record<string, unknown>;
+  return {
+    id:                u.id,
+    email:             u.email ?? '',
+    phone:             String(meta.phone ?? ''),
+    name:              String(meta.name ?? u.email?.split('@')[0] ?? 'User'),
+    role:              normaliseRole(String(appMeta.role ?? meta.role ?? 'customer')),
+    preferredLanguage: (meta.preferredLanguage as 'en' | 'ar') ?? 'en',
+  };
+};
+
 // ── Context type ───────────────────────────────────────────────────────────
 
 interface DirectoryContextType {
   // Auth
-  currentUser:    UserProfile | null;
-  apiToken:       string | null;
-  signIn:         (email: string, phone: string, role: UserRole, name?: string) => void;
-  apiLogin:       (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  signOut:        () => void;
+  authReady:        boolean;
+  isAuthenticated:  boolean;
+  currentUser:      UserProfile | null;
+  apiToken:         string | null;
+  apiLogin:         (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  registerAccount:  (payload: { name: string; email: string; password: string; phone?: string }) => Promise<{ success: boolean; error?: string }>;
+  signOut:          () => Promise<void>;
   updateUserProfile: (updates: Partial<Pick<UserProfile, 'name' | 'phone' | 'preferredLanguage'>>) => Promise<{ success: boolean; error?: string }>;
 
   // i18n / theme
@@ -108,7 +133,7 @@ interface DirectoryContextType {
   addBusiness:    (business: Business) => void;
   updateBusiness: (updated: Business) => void;
   removeBusiness: (id: string) => void;
-  refreshDirectory: () => Promise<void>;
+  refreshDirectory: (actingUser?: UserProfile | null) => Promise<void>;
 
   reviews:        Review[];
   addReview:      (review: Review) => void;
@@ -158,15 +183,18 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // ── Auth ─────────────────────────────────────────────────────────────────
   const [apiToken, setApiToken] = useState<string | null>(() =>
-    localStorage.getItem('shia_dir_token')
+    isSupabaseConfigured ? null : localStorage.getItem('shia_dir_token')
   );
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
+    if (isSupabaseConfigured) return null;
     try {
       const saved = localStorage.getItem('shia_dir_user');
       if (saved) return JSON.parse(saved);
     } catch { localStorage.removeItem('shia_dir_user'); }
     return null;
   });
+
+  const [authReady, setAuthReady] = useState(!isSupabaseConfigured);
 
   // ── Directory data (starts with mock; overwritten by API on mount) ────────
   const [categories, setCategories] = useState<Category[]>(() => {
@@ -239,13 +267,16 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [theme]);
 
   // ── Live API fetch — source of truth (starts empty until you add listings) ──
-  const syncMyDirectoryProfile = useCallback(async (token: string, userEmail?: string): Promise<void> => {
+  const syncMyDirectoryProfile = useCallback(async (token: string, userEmail?: string, userRole?: UserRole): Promise<void> => {
+    if (userRole === 'customer') return;
+
     try {
-      const res = await fetch('/api/directory/mine', {
+      const res = await apiFetch('/api/directory/mine', {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return;
-      const profile: Record<string, unknown> = await res.json();
+      const profile: Record<string, unknown> | null = await res.json();
+      if (!profile?.id) return;
       const mapped = mapDirectoryProfile(profile);
       setBusinesses((prev) => {
         const rest = prev.filter((b) =>
@@ -263,27 +294,56 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, []);
 
-  const refreshDirectory = async (): Promise<void> => {
+  const refreshDirectory = async (actingUser?: UserProfile | null): Promise<void> => {
     try {
-      const [dirRes, jobsRes] = await Promise.all([
-        fetch('/api/directory'),
-        fetch('/api/jobsboard'),
+      const role = actingUser?.role ?? currentUser?.role;
+      const token = apiToken ?? (typeof window !== 'undefined' ? localStorage.getItem('shia_dir_token') : null);
+      const isAdminUser = role === 'admin';
+      const shouldFetchMine = Boolean(apiToken && role && role !== 'customer');
+      const dirPath = isAdminUser && token ? '/api/directory/all' : '/api/directory';
+      const authHeaders: HeadersInit = token
+        ? { Authorization: `Bearer ${token}` }
+        : {};
+
+      const [dirRes, jobsRes, mineRes] = await Promise.all([
+        apiFetch(dirPath, { headers: authHeaders }),
+        apiFetch('/api/jobsboard'),
+        shouldFetchMine
+          ? apiFetch('/api/directory/mine', { headers: authHeaders })
+          : Promise.resolve(null),
       ]);
+
+      let listings: Business[] = [];
+      let rawDirData: Record<string, unknown>[] = [];
       if (dirRes.ok) {
         const dirData: Record<string, unknown>[] = await dirRes.json();
         if (Array.isArray(dirData)) {
-          setBusinesses(dirData.map(mapDirectoryProfile));
-          const hiring: Record<string, boolean> = {};
-          dirData.forEach((p) => { hiring[String(p.id)] = Boolean(p.hiringActive); });
-          setHiringActiveState(hiring);
-        } else {
-          setBusinesses([]);
-          setHiringActiveState({});
+          rawDirData = dirData;
+          listings = dirData.map(mapDirectoryProfile);
         }
-      } else {
-        setBusinesses([]);
-        setHiringActiveState({});
       }
+
+      // Keep the signed-in user's pending profile visible even when not public yet
+      if (mineRes?.ok) {
+        const mineData: Record<string, unknown> | null = await mineRes.json();
+        if (mineData?.id) {
+          const mineListing = mapDirectoryProfile(mineData);
+          if (!listings.some((b) => b.id === mineListing.id)) {
+            listings = [...listings, mineListing];
+          }
+        }
+      }
+
+      setBusinesses(listings);
+      const hiring: Record<string, boolean> = {};
+      rawDirData.forEach((p) => {
+        hiring[String(p.id)] = Boolean(p.hiringActive);
+      });
+      listings.forEach((b) => {
+        if (hiring[b.id] === undefined) hiring[b.id] = hiringActive[b.id] ?? false;
+      });
+      setHiringActiveState(hiring);
+
       if (jobsRes.ok) {
         const jobsData: Record<string, unknown>[] = await jobsRes.json();
         setJobs(Array.isArray(jobsData) ? jobsData.map(mapApiJob) : []);
@@ -297,23 +357,78 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       console.warn('[ABN Directory] Backend not reachable — showing empty directory.');
     }
 
-    if (apiToken) {
-      await syncMyDirectoryProfile(apiToken, currentUser?.email);
+    if (apiToken && currentUser?.role !== 'customer') {
+      await syncMyDirectoryProfile(apiToken, currentUser?.email, currentUser?.role);
     }
   };
 
-  const fetchDoneRef = useRef(false);
+  const clearAuthState = useCallback(() => {
+    setCurrentUser(null);
+    setApiToken(null);
+    localStorage.removeItem('shia_dir_token');
+    localStorage.removeItem('shia_dir_user');
+  }, []);
+
+  const applySupabaseSession = useCallback((session: Session | null): UserProfile | null => {
+    if (!session) {
+      clearAuthState();
+      return null;
+    }
+    const profile = profileFromSupabaseSession(session);
+    setCurrentUser(profile);
+    setApiToken(session.access_token);
+    localStorage.setItem('shia_dir_token', session.access_token);
+    return profile;
+  }, [clearAuthState]);
+
+  // ── Supabase session listener — auth gateway source of truth ───────────────
   useEffect(() => {
-    if (fetchDoneRef.current) return;
-    fetchDoneRef.current = true;
-    refreshDirectory();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!isSupabaseConfigured || !supabase) {
+      setAuthReady(true);
+      return;
+    }
+
+    let active = true;
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!active) return;
+      applySupabaseSession(session);
+      setAuthReady(true);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      applySupabaseSession(session);
+      setAuthReady(true);
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [applySupabaseSession]);
+
+  const isAuthenticated = isSupabaseConfigured
+    ? Boolean(currentUser && apiToken)
+    : Boolean(currentUser);
+
+  // Refresh directory when authenticated session is established
+  const authHydratedRef = useRef(false);
+  useEffect(() => {
+    if (!authReady || !isAuthenticated || !currentUser) return;
+    if (authHydratedRef.current) return;
+    authHydratedRef.current = true;
+    refreshDirectory(currentUser);
+  }, [authReady, isAuthenticated, currentUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (apiToken) {
-      syncMyDirectoryProfile(apiToken, currentUser?.email);
+    if (!isAuthenticated) authHydratedRef.current = false;
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (apiToken && currentUser?.role !== 'customer') {
+      syncMyDirectoryProfile(apiToken, currentUser?.email, currentUser?.role);
     }
-  }, [apiToken, currentUser?.email, syncMyDirectoryProfile]);
+  }, [apiToken, currentUser?.email, currentUser?.role, syncMyDirectoryProfile]);
 
   // ── Subscription expiry check ─────────────────────────────────────────────
   const expiryCheckDone = useRef(false);
@@ -361,13 +476,49 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // ── Auth functions ────────────────────────────────────────────────────────
 
-  /** Real API login — calls Express backend → JWT → sets currentUser */
+  /** Sign in — Supabase session when configured, otherwise Express JWT */
   const apiLogin = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    const trimmedEmail = email.trim().toLowerCase();
+
+    if (supabase) {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: trimmedEmail,
+        password,
+      });
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      try {
+        const res = await apiFetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: trimmedEmail, password }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const backendUser = data.user as { role: string; name: string; phone: string; preferredLanguage?: string };
+          setCurrentUser((prev) => prev ? {
+            ...prev,
+            role:              normaliseRole(backendUser.role),
+            name:              backendUser.name || prev.name,
+            phone:             backendUser.phone || prev.phone,
+            preferredLanguage: (backendUser.preferredLanguage as 'en' | 'ar') || prev.preferredLanguage,
+          } : prev);
+        }
+      } catch {
+        // Supabase session remains valid for app access
+      }
+
+      addNotification('Login Successful', `Assalamu Alaykum. Welcome back!`, 'customer');
+      return { success: true };
+    }
+
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await apiFetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: trimmedEmail, password }),
       });
       const data = await res.json();
       if (!res.ok) return { success: false, error: data.error || 'Login failed.' };
@@ -389,28 +540,99 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setCurrentUser(profile);
       addNotification('Login Successful', `Assalamu Alaykum, ${user.name}. Welcome back!`, normaliseRole(user.role));
 
-      // After login, re-fetch the live directory so business matches the logged-in user
-      await refreshDirectory();
-      await syncMyDirectoryProfile(token, user.email);
+      await refreshDirectory(profile);
+      if (profile.role !== 'customer') {
+        await syncMyDirectoryProfile(token, user.email, profile.role);
+      }
       return { success: true };
     } catch {
       return { success: false, error: 'Cannot reach server. Make sure the backend is running.' };
     }
   };
 
-  /** Legacy / offline sign-in (no password — used as fallback when backend is down) */
-  const signIn = (email: string, phone: string, role: UserRole, name?: string) => {
-    const fallbackName = name || email.split('@')[0] || 'User';
-    const stableId = `${role}-${email.replace(/[^a-z0-9]/gi, '').toLowerCase()}`;
-    const newUser: UserProfile = { id: stableId, email, phone, name: fallbackName, role, preferredLanguage: language as 'en' | 'ar' };
-    setCurrentUser(newUser);
-    addNotification('Login Successful', `Assalamu Alaykum, ${fallbackName}. Welcome back!`, role);
+  const registerAccount = async (payload: {
+    name: string;
+    email: string;
+    password: string;
+    phone?: string;
+  }): Promise<{ success: boolean; error?: string }> => {
+    const trimmedEmail = payload.email.trim().toLowerCase();
+    const trimmedName = payload.name.trim();
+    const phone = payload.phone?.trim() ?? '';
+
+    if (supabase) {
+      const { error } = await supabase.auth.signUp({
+        email: trimmedEmail,
+        password: payload.password,
+        options: {
+          data: {
+            name: trimmedName,
+            phone,
+            role: 'customer',
+            preferredLanguage: language,
+          },
+        },
+      });
+      if (error) {
+        return { success: false, error: error.message };
+      }
+    }
+
+    try {
+      const res = await apiFetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: trimmedName,
+          email: trimmedEmail,
+          phone,
+          role: 'customer',
+          password: payload.password,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        const exists = res.status === 409;
+        if (!supabase || !exists) {
+          return { success: false, error: data.error || 'Registration failed.' };
+        }
+      } else if (!supabase) {
+        localStorage.setItem('shia_dir_token', data.token);
+        setApiToken(data.token);
+        const user = data.user as { id: string; email: string; phone: string; name: string; role: string };
+        setCurrentUser({
+          id: user.id,
+          email: user.email,
+          phone: user.phone || '',
+          name: user.name,
+          role: normaliseRole(user.role),
+          preferredLanguage: language as 'en' | 'ar',
+        });
+        await refreshDirectory();
+        return { success: true };
+      }
+    } catch {
+      if (!supabase) {
+        return { success: false, error: 'Cannot reach server. Make sure the backend is running.' };
+      }
+    }
+
+    if (supabase) {
+      const loginResult = await apiLogin(trimmedEmail, payload.password);
+      return loginResult.success
+        ? { success: true }
+        : { success: false, error: loginResult.error || 'Account created. Please sign in.' };
+    }
+
+    return { success: true };
   };
 
-  const signOut = () => {
-    setCurrentUser(null);
-    setApiToken(null);
-    localStorage.removeItem('shia_dir_token');
+  const signOut = async (): Promise<void> => {
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
+    clearAuthState();
   };
 
   const updateUserProfile = async (
@@ -422,7 +644,7 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     if (apiToken) {
       try {
-        const res = await fetch('/api/auth/me', {
+        const res = await apiFetch('/api/auth/me', {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -465,7 +687,12 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // ── Business helpers ──────────────────────────────────────────────────────
   const addBusiness = (biz: Business) => {
     setBusinesses((p) => [...p, biz]);
-    addNotification('New Business Listed', `${biz.name} has registered under ${biz.subcategory.en}.`, 'admin');
+    const kindLabel = biz.listingType === 'service' ? 'Service' : 'Business';
+    addNotification(
+      'New Submission — Vetting Required',
+      `${biz.name} (${kindLabel}) is awaiting admin review.`,
+      'admin',
+    );
   };
   const updateBusiness = (updated: Business) =>
     setBusinesses((p) => p.map((b) => (b.id === updated.id ? updated : b)));
@@ -495,7 +722,7 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const fetchReviewsForBusiness = useCallback(async (businessId: string): Promise<void> => {
     try {
-      const res = await fetch(`/api/reviews?businessId=${encodeURIComponent(businessId)}`);
+      const res = await apiFetch(`/api/reviews?businessId=${encodeURIComponent(businessId)}`);
       if (!res.ok) return;
       const data: Review[] = await res.json();
       if (!Array.isArray(data)) return;
@@ -519,7 +746,7 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     if (apiToken) {
       try {
-        const res = await fetch('/api/reviews', {
+        const res = await apiFetch('/api/reviews', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -607,7 +834,7 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     if (apiToken) {
       try {
-        const res = await fetch('/api/directory', {
+        const res = await apiFetch('/api/directory', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -661,7 +888,7 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     if (apiToken) {
       try {
-        const res = await fetch(`/api/directory/${businessId}/hiring`, {
+        const res = await apiFetch(`/api/directory/${businessId}/hiring`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -694,7 +921,7 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // ── Provider ──────────────────────────────────────────────────────────────
   return (
     <DirectoryContext.Provider value={{
-      currentUser, apiToken, signIn, apiLogin, signOut, updateUserProfile,
+      authReady, isAuthenticated, currentUser, apiToken, apiLogin, registerAccount, signOut, updateUserProfile,
       language, setLanguage, theme, setTheme,
       categories, addCategory, removeCategory,
       businesses, addBusiness, updateBusiness, removeBusiness, refreshDirectory,
