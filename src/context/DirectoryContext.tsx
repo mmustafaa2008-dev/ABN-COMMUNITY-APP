@@ -560,8 +560,10 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const trimmedName = payload.name.trim();
     const phone = payload.phone?.trim() ?? '';
 
+    // Prefer Supabase Auth when configured (same path as login on Vercel).
+    // Express /api/auth/register is optional sync — must not block signup if API is down.
     if (supabase) {
-      const { error } = await supabase.auth.signUp({
+      const { data: signUpData, error } = await supabase.auth.signUp({
         email: trimmedEmail,
         password: payload.password,
         options: {
@@ -576,6 +578,36 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (error) {
         return { success: false, error: error.message };
       }
+
+      // Best-effort mirror into Express app_users (directory JWT features)
+      try {
+        await apiFetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: trimmedName,
+            email: trimmedEmail,
+            phone,
+            role: 'customer',
+            password: payload.password,
+          }),
+        });
+      } catch {
+        // Backend optional when Supabase Auth succeeded
+      }
+
+      if (signUpData.session) {
+        applySupabaseSession(signUpData.session);
+        await refreshDirectory(profileFromSupabaseSession(signUpData.session));
+        return { success: true };
+      }
+
+      // Email confirmation may be required — account exists; user signs in after confirm
+      if (signUpData.user) {
+        return { success: true };
+      }
+
+      return { success: false, error: 'Registration failed.' };
     }
 
     try {
@@ -593,39 +625,29 @@ export const DirectoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const data = await res.json();
 
       if (!res.ok) {
-        const exists = res.status === 409;
-        if (!supabase || !exists) {
-          return { success: false, error: data.error || 'Registration failed.' };
-        }
-      } else if (!supabase) {
-        localStorage.setItem('shia_dir_token', data.token);
-        setApiToken(data.token);
-        const user = data.user as { id: string; email: string; phone: string; name: string; role: string };
-        setCurrentUser({
-          id: user.id,
-          email: user.email,
-          phone: user.phone || '',
-          name: user.name,
-          role: normaliseRole(user.role),
-          preferredLanguage: language as 'en' | 'ar',
-        });
-        await refreshDirectory();
-        return { success: true };
+        return { success: false, error: data.error || 'Registration failed.' };
       }
+
+      localStorage.setItem('shia_dir_token', data.token);
+      setApiToken(data.token);
+      const user = data.user as { id: string; email: string; phone: string; name: string; role: string };
+      setCurrentUser({
+        id: user.id,
+        email: user.email,
+        phone: user.phone || '',
+        name: user.name,
+        role: normaliseRole(user.role),
+        preferredLanguage: language as 'en' | 'ar',
+      });
+
+      await refreshDirectory();
+      return { success: true };
     } catch {
-      if (!supabase) {
-        return { success: false, error: 'Cannot reach server. Make sure the backend is running.' };
-      }
+      return {
+        success: false,
+        error: 'Cannot reach server. Set VITE_API_BASE_URL to your live backend URL.',
+      };
     }
-
-    if (supabase) {
-      const loginResult = await apiLogin(trimmedEmail, payload.password);
-      return loginResult.success
-        ? { success: true }
-        : { success: false, error: loginResult.error || 'Account created. Please sign in.' };
-    }
-
-    return { success: true };
   };
 
   const signOut = async (): Promise<void> => {

@@ -70,10 +70,11 @@ export const AuthScreen: React.FC = () => {
       setError(result.error || (language === 'en' ? 'Registration failed.' : 'فشل التسجيل.'));
       return;
     }
+    // If email confirmation is on, session may be empty — still treat as success
     setRegSuccess(
       language === 'en'
-        ? `Welcome, ${name.trim()}! Account created.`
-        : `أهلاً ${name.trim()}! تم إنشاء حسابك.`,
+        ? `Welcome, ${name.trim()}! Account created. You can sign in now (confirm email first if required).`
+        : `أهلاً ${name.trim()}! تم إنشاء حسابك. يمكنك تسجيل الدخول الآن.`,
     );
   };
 

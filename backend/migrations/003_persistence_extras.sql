@@ -38,6 +38,9 @@ create trigger trg_app_users_updated_at
 
 alter table public.app_users enable row level security;
 
+-- Backend uses the service_role / secret key (bypasses RLS).
+-- No anon policies on purpose — never expose password_hash to the browser.
+
 -- Star ratings persisted per user + listing
 create table if not exists public.business_reviews (
   id            uuid primary key default gen_random_uuid(),

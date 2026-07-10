@@ -1,56 +1,66 @@
 /**
- * supabase.js — Supabase client singletons
+ * supabase.js — Supabase clients via @supabase/server
  *
- * Two clients are exported:
+ * Prefers new API keys (SUPABASE_PUBLISHABLE_KEY / SUPABASE_SECRET_KEY).
+ * Falls back to legacy JWT keys (SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY).
  *
- *  supabaseAnon
- *    Uses the ANON key. Respects Row Level Security (RLS) policies.
- *    Safe to mirror what a frontend client would do.
- *
- *  supabaseAdmin
- *    Uses the SERVICE ROLE key. Bypasses RLS completely.
- *    Use ONLY inside backend route handlers — never send this key to the browser.
+ *  supabaseAnon   — RLS-scoped public client
+ *  supabaseAdmin  — bypasses RLS (backend routes only)
  */
 
 require('dotenv').config();
+
+const { createAdminClient, createContextClient } = require('@supabase/server/core');
 const { createClient } = require('@supabase/supabase-js');
 
-const SUPABASE_URL              = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY         = process.env.SUPABASE_ANON_KEY;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_URL = process.env.SUPABASE_URL;
 
-// ── Validate on startup ────────────────────────────────────────────────────
+const hasNewKeys =
+  Boolean(process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEYS) &&
+  Boolean(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SECRET_KEYS);
+
+const SUPABASE_ANON_KEY =
+  process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY;
+const SUPABASE_SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+
 if (!SUPABASE_URL) {
   throw new Error('Missing env var: SUPABASE_URL');
 }
 if (!SUPABASE_ANON_KEY) {
-  throw new Error('Missing env var: SUPABASE_ANON_KEY');
+  throw new Error(
+    'Missing env var: SUPABASE_PUBLISHABLE_KEY (or legacy SUPABASE_ANON_KEY)',
+  );
 }
 if (!SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error('Missing env var: SUPABASE_SERVICE_ROLE_KEY');
-}
-if (SUPABASE_ANON_KEY === SUPABASE_SERVICE_ROLE_KEY) {
-  console.warn(
-    '\n⚠️  WARNING: SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY are identical.\n' +
-    '   The service_role key must be different from the anon key.\n' +
-    '   Get the correct key from: Dashboard → Project Settings → API → service_role secret\n'
+  throw new Error(
+    'Missing env var: SUPABASE_SECRET_KEY (or legacy SUPABASE_SERVICE_ROLE_KEY)',
   );
 }
 
-// ── Public / anon client (honours RLS) ────────────────────────────────────
-const supabaseAnon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    persistSession: false, // server-side — no browser storage needed
-    autoRefreshToken: false,
-  },
-});
+if (!hasNewKeys && SUPABASE_ANON_KEY === SUPABASE_SERVICE_ROLE_KEY) {
+  console.warn(
+    '\n⚠️  WARNING: anon and service keys are identical. Use separate publishable/secret keys.\n',
+  );
+}
 
-// ── Admin / service-role client (bypasses RLS) ────────────────────────────
-const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false,
-  },
-});
+const serverClientOptions = {
+  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+};
 
-module.exports = { supabaseAnon, supabaseAdmin };
+let supabaseAnon;
+let supabaseAdmin;
+
+if (hasNewKeys) {
+  supabaseAnon = createContextClient();
+  supabaseAdmin = createAdminClient();
+} else {
+  supabaseAnon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, serverClientOptions);
+  supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, serverClientOptions);
+}
+
+module.exports = {
+  supabaseAnon,
+  supabaseAdmin,
+  hasNewSupabaseKeys: hasNewKeys,
+};

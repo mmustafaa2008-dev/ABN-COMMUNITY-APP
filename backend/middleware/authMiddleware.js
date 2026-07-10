@@ -6,13 +6,23 @@
  */
 
 const jwt = require('jsonwebtoken');
+const { verifyCredentials } = require('@supabase/server/core');
 const { users } = require('../db');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
 
+const hasSupabaseAuth =
+  Boolean(process.env.SUPABASE_URL) &&
+  Boolean(
+    process.env.SUPABASE_JWKS_URL ||
+    process.env.SUPABASE_JWKS ||
+    process.env.SUPABASE_SECRET_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+  );
+
 let supabaseAdmin = null;
 try {
-  if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  if (hasSupabaseAuth) {
     supabaseAdmin = require('../supabase').supabaseAdmin;
   }
 } catch {
@@ -25,6 +35,25 @@ const mapDbUser = (u) => ({
   role: u.role,
   name: u.name,
 });
+
+const applySupabaseUser = (req, authUser) => {
+  const email = authUser.email?.toLowerCase().trim() ?? '';
+  const dbUser = email ? users.get(email) : null;
+
+  if (dbUser) {
+    req.user = mapDbUser(dbUser);
+    return;
+  }
+
+  const meta = authUser.user_metadata ?? authUser.userMetadata ?? {};
+  const appMeta = authUser.app_metadata ?? authUser.appMetadata ?? {};
+  req.user = {
+    id: authUser.id ?? authUser.sub,
+    email,
+    role: appMeta.role || meta.role || 'customer',
+    name: meta.name || email.split('@')[0] || 'User',
+  };
+};
 
 /**
  * Extracts and verifies the Bearer token from the Authorization header.
@@ -46,33 +75,32 @@ const authenticate = async (req, res, next) => {
     // fall through — try Supabase JWT
   }
 
-  if (supabaseAdmin) {
+  if (hasSupabaseAuth) {
     try {
-      const { data, error } = await supabaseAdmin.auth.getUser(token);
-      if (error || !data?.user) {
-        throw error || new Error('Invalid Supabase token.');
+      const { data: auth, error } = await verifyCredentials(
+        { token, apikey: null },
+        { auth: 'user' },
+      );
+
+      if (!error && auth?.userClaims) {
+        applySupabaseUser(req, auth.userClaims);
+        return next();
       }
-
-      const authUser = data.user;
-      const email = authUser.email?.toLowerCase().trim() ?? '';
-      const dbUser = email ? users.get(email) : null;
-
-      if (dbUser) {
-        req.user = mapDbUser(dbUser);
-      } else {
-        const meta = authUser.user_metadata ?? {};
-        const appMeta = authUser.app_metadata ?? {};
-        req.user = {
-          id: authUser.id,
-          email,
-          role: appMeta.role || meta.role || 'customer',
-          name: meta.name || email.split('@')[0] || 'User',
-        };
-      }
-
-      return next();
     } catch {
-      // fall through
+      // fall through — legacy getUser path
+    }
+
+    if (supabaseAdmin) {
+      try {
+        const { data, error } = await supabaseAdmin.auth.getUser(token);
+        if (error || !data?.user) {
+          throw error || new Error('Invalid Supabase token.');
+        }
+        applySupabaseUser(req, data.user);
+        return next();
+      } catch {
+        // fall through
+      }
     }
   }
 

@@ -55,6 +55,7 @@ async function findById(id) {
 async function createUser(record) {
   if (!isSupabaseStorage()) {
     users.set(record.email, record);
+    console.log(`[auth] Registered ${record.email} → in-memory only (NOT Supabase)`);
     return record;
   }
 
@@ -67,6 +68,7 @@ async function createUser(record) {
   if (error) throw new Error(error.message);
   const mapped = mapUserFromDb(data);
   users.set(mapped.email, mapped);
+  console.log(`[auth] Registered ${mapped.email} → Supabase app_users`);
   return mapped;
 }
 

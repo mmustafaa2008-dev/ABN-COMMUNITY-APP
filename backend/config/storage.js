@@ -6,12 +6,16 @@
  * STORAGE_MODE=supabase  → persist auth, directory, jobs, reviews in Supabase
  * STORAGE_MODE=memory  → volatile in-process stores (dev fallback only)
  *
- * Defaults to supabase when SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY are set.
+ * Defaults to supabase when SUPABASE_URL + secret/service key are set.
  */
+
+const hasSupabaseSecretKey = Boolean(
+  process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY,
+);
 
 const STORAGE_MODE = (process.env.STORAGE_MODE || '').toLowerCase() === 'memory'
   ? 'memory'
-  : (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY)
+  : (process.env.SUPABASE_URL && hasSupabaseSecretKey)
     ? 'supabase'
     : 'memory';
 

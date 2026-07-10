@@ -77,6 +77,15 @@ router.post('/register', async (req, res, next) => {
 
     res.status(201).json(await buildAuthResponse(record, token));
   } catch (err) {
+    const msg = err?.message || '';
+    // Surface common Supabase / schema failures clearly (still safe for clients)
+    if (/app_users|relation|schema cache|permission denied|row-level security/i.test(msg)) {
+      return res.status(503).json({
+        error:
+          'Database is not ready for registration. Ensure app_users exists ' +
+          '(run backend/migrations/003_persistence_extras.sql) and STORAGE_MODE=supabase.',
+      });
+    }
     next(err);
   }
 });

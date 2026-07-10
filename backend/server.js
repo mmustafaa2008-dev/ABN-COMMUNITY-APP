@@ -90,12 +90,20 @@ app.use('/api/verification', require('./routes/verification'));
 
 app.get('/api/health', async (_req, res) => {
   let supabaseStatus = 'unchecked';
+  let appUsersCount = null;
   try {
     const { error } = await supabaseAdmin
       .from('profiles_directory')
       .select('*')
       .limit(1);
     supabaseStatus = error ? `error: ${error.message}` : 'connected';
+
+    if (isSupabaseStorage()) {
+      const { count, error: countErr } = await supabaseAdmin
+        .from('app_users')
+        .select('*', { count: 'exact', head: true });
+      appUsersCount = countErr ? `error: ${countErr.message}` : count;
+    }
   } catch (e) {
     supabaseStatus = `error: ${e.message}`;
   }
@@ -107,6 +115,10 @@ app.get('/api/health', async (_req, res) => {
     env:       process.env.NODE_ENV || 'development',
     storage:   STORAGE_MODE,
     supabase:  supabaseStatus,
+    appUsers:  appUsersCount,
+    hint:      isSupabaseStorage()
+      ? 'Registered accounts are in Supabase → Table Editor → app_users (not Authentication → Users)'
+      : 'WARNING: memory mode — registrations are lost on restart. Set STORAGE_MODE=supabase on Railway.',
   });
 });
 
